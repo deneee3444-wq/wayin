@@ -1,7 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 import hashlib, base64, time, re, json, random, string, os, uuid, threading, tempfile
 import requests
-from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
@@ -245,7 +244,10 @@ def run_video_job(job_id, image_path, instruction, model, ratio, duration,
         )
         generate_id = video_task["generate_id"]
         task_id = video_task["task_id"]
-        update("polling", f"🔄 Video işleniyor... task_id: {task_id}", {"generate_id": generate_id, "task_id_wayin": task_id})
+        update("polling", f"🔄 Video işleniyor... task_id: {task_id}", {
+            "generate_id": generate_id,
+            "task_id_wayin": task_id
+        })
 
         start = time.time()
         while time.time() - start < 600:
@@ -259,7 +261,7 @@ def run_video_job(job_id, image_path, instruction, model, ratio, duration,
                 fid = data["results"][0]["fid"]
                 content = wayin.get_video_content(generate_id, task_id, fid)
                 video_url = content["url"]
-                update("done", f"✅ Tamamlandı!", {"video_url": video_url, "fid": fid})
+                update("done", "✅ Tamamlandı!", {"video_url": video_url, "fid": fid})
                 with tasks_lock:
                     tasks[job_id]["status"] = "done"
 
