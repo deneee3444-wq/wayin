@@ -6,66 +6,58 @@ from bs4 import BeautifulSoup
 app = Flask(__name__)
 
 # ─── In-memory persistence ───────────────────────────────────────────────────
-# Tasks and gallery survive page refresh (stay until process restart)
-tasks = {}       # task_id -> task dict
-gallery = []     # list of completed video dicts
+tasks = {}
+gallery = []
 tasks_lock = threading.Lock()
 gallery_lock = threading.Lock()
 
 
-# ─── FakeMailClient ──────────────────────────────────────────────────────────
+# ─── TempMailClient ──────────────────────────────────────────────────────────
 
 class FakeMailClient:
+    BASE = "https://api.tempmail.lol"
+
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
-            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-            "accept-encoding": "gzip, deflate, br, zstd",
-            "accept-language": "tr-TR,tr;q=0.9",
-            "sec-ch-ua": '"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"',
-            "sec-fetch-dest": "document",
-            "sec-fetch-mode": "navigate",
-            "sec-fetch-site": "none",
-            "sec-fetch-user": "?1",
-            "upgrade-insecure-requests": "1",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
         })
         self.email = None
+        self.token = None
         self._seen_ids = set()
 
     def get_email(self):
-        html = self.session.get("https://www.fakemail.net/").text
-        csrf_token = re.search(r'const CSRF="([a-f0-9]+)"', html).group(1)
-        self.session.headers.update({
-            "accept": "application/json, text/javascript, */*; q=0.01",
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
-            "x-requested-with": "XMLHttpRequest",
-            "referer": "https://www.fakemail.net/",
-        })
-        response = self.session.get("https://www.fakemail.net/index/index", params={"csrf_token": csrf_token})
-        data = json.loads(response.content.decode("utf-8-sig"))
-        self.email = data["email"]
+        resp = self.session.get(f"{self.BASE}/generate")
+        resp.raise_for_status()
+        data = resp.json()
+        self.email = data["address"]
+        self.token = data["token"]
         return self.email
 
     def wait_for_code(self, timeout=60):
         start = time.time()
         while time.time() - start < timeout:
-            refresh = self.session.get("https://www.fakemail.net/index/refresh")
-            messages = json.loads(refresh.content.decode("utf-8-sig"))
-            for msg in messages:
-                if msg["id"] not in self._seen_ids:
-                    self._seen_ids.add(msg["id"])
-                    mail_html = self.session.get(f"https://www.fakemail.net/email/id/{msg['id']}").text
-                    soup = BeautifulSoup(mail_html, "html.parser")
-                    for p in soup.find_all("p"):
-                        text = p.text.strip()
-                        if re.fullmatch(r'\d{4,8}', text):
-                            return text
-            time.sleep(2)
+            resp = self.session.get(f"{self.BASE}/auth/{self.token}")
+            resp.raise_for_status()
+            data = resp.json()
+
+            if data.get("token") == False:
+                raise TimeoutError("Tempmail token süresi doldu!")
+
+            emails = data.get("email") or []
+            for mail in emails:
+                mail_id = mail.get("id") or mail.get("from") or str(mail)
+                if mail_id not in self._seen_ids:
+                    self._seen_ids.add(mail_id)
+                    body = mail.get("body", "") or ""
+                    subject = mail.get("subject", "") or ""
+                    full_text = subject + " " + body
+                    match = re.search(r'\b(\d{4,8})\b', full_text)
+                    if match:
+                        return match.group(1)
+
+            time.sleep(3)
+
         raise TimeoutError("Kod süresi doldu!")
 
 
@@ -234,8 +226,10 @@ def run_video_job(job_id, image_path, instruction, model, ratio, duration,
 
         update("upload", "⬆️ Resim yükleniyor...")
         upload_result = wayin.upload_image(image_path)
-        try: os.unlink(image_path)
-        except: pass
+        try:
+            os.unlink(image_path)
+        except:
+            pass
         update("generating", "🎬 Video oluşturuluyor...", {"signed_url": upload_result["signed_url"]})
 
         video_task = wayin.generate_video(
@@ -253,7 +247,6 @@ def run_video_job(job_id, image_path, instruction, model, ratio, duration,
         task_id = video_task["task_id"]
         update("polling", f"🔄 Video işleniyor... task_id: {task_id}", {"generate_id": generate_id, "task_id_wayin": task_id})
 
-        # Poll loop
         start = time.time()
         while time.time() - start < 600:
             data = wayin.poll_status(generate_id, task_id)
@@ -270,7 +263,6 @@ def run_video_job(job_id, image_path, instruction, model, ratio, duration,
                 with tasks_lock:
                     tasks[job_id]["status"] = "done"
 
-                # Add to gallery
                 with gallery_lock:
                     gallery.append({
                         "id": job_id,
@@ -319,7 +311,6 @@ def api_generate():
     file = request.files["image"]
     ext = os.path.splitext(file.filename)[1] or ".jpg"
 
-    # Save to a temp file — deleted automatically after upload
     tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
     file.save(tmp.name)
     tmp.close()
@@ -356,11 +347,12 @@ def api_generate():
     )
     t.start()
 
-    # Temp file is deleted inside the worker after upload; schedule cleanup fallback
     def _cleanup():
         time.sleep(120)
-        try: os.unlink(image_path)
-        except: pass
+        try:
+            os.unlink(image_path)
+        except:
+            pass
     threading.Thread(target=_cleanup, daemon=True).start()
 
     return jsonify({"job_id": job_id})
