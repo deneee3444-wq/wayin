@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify
 import hashlib, base64, time, re, json, random, string, os, uuid, threading, tempfile
 import requests
-from bs4 import BeautifulSoup
+from TempMail import TempMail as TempMailClient
 
 app = Flask(__name__)
 
@@ -13,60 +13,46 @@ tasks_lock = threading.Lock()
 gallery_lock = threading.Lock()
 
 
-# ─── FakeMailClient ──────────────────────────────────────────────────────────
+# ─── TempMailWrapper ─────────────────────────────────────────────────────────
 
 class FakeMailClient:
+    """TempMail.lol üzerinden geçici e-posta oluşturur ve kod bekler."""
+
     def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
-            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-            "accept-encoding": "gzip, deflate, br, zstd",
-            "accept-language": "tr-TR,tr;q=0.9",
-            "sec-ch-ua": '"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"',
-            "sec-fetch-dest": "document",
-            "sec-fetch-mode": "navigate",
-            "sec-fetch-site": "none",
-            "sec-fetch-user": "?1",
-            "upgrade-insecure-requests": "1",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
-        })
-        self.email = None
-        self._seen_ids = set()
+        self._client = TempMailClient()   # API key gerekmez (ücretsiz tier)
+        self._inbox  = None
+        self.email   = None
 
     def get_email(self):
-        html = self.session.get("https://www.fakemail.net/").text
-        csrf_token = re.search(r'const CSRF="([a-f0-9]+)"', html).group(1)
-        self.session.headers.update({
-            "accept": "application/json, text/javascript, */*; q=0.01",
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
-            "x-requested-with": "XMLHttpRequest",
-            "referer": "https://www.fakemail.net/",
-        })
-        response = self.session.get("https://www.fakemail.net/index/index", params={"csrf_token": csrf_token})
-        data = json.loads(response.content.decode("utf-8-sig"))
-        self.email = data["email"]
+        self._inbox = self._client.createInbox()
+        self.email  = self._inbox.address
         return self.email
 
     def wait_for_code(self, timeout=60):
         start = time.time()
+        seen_subjects = set()
+
         while time.time() - start < timeout:
-            refresh = self.session.get("https://www.fakemail.net/index/refresh")
-            messages = json.loads(refresh.content.decode("utf-8-sig"))
-            print(messages)
-            for msg in messages:
-                if msg["id"] not in self._seen_ids:
-                    self._seen_ids.add(msg["id"])
-                    mail_html = self.session.get(f"https://www.fakemail.net/email/id/{msg['id']}").text
-                    soup = BeautifulSoup(mail_html, "html.parser")
-                    for p in soup.find_all("p"):
-                        text = p.text.strip()
-                        if re.fullmatch(r'\d{4,8}', text):
-                            return text
+            try:
+                emails = self._client.getEmails(self._inbox)
+            except Exception:
+                time.sleep(2)
+                continue
+
+            for mail in emails:
+                key = (mail.sender, mail.subject, mail.date)
+                if key in seen_subjects:
+                    continue
+                seen_subjects.add(key)
+
+                # Konu veya gövdeden 4-8 haneli kodu çıkar
+                for text in [mail.subject or "", mail.body or ""]:
+                    match = re.search(r'\b(\d{4,8})\b', text)
+                    if match:
+                        return match.group(1)
+
             time.sleep(2)
+
         raise TimeoutError("Kod süresi doldu!")
 
 
@@ -110,7 +96,6 @@ class WayinClient:
         payload = {"email": email, "reason": reason, "timestamp": timestamp, "ticket": ticket}
         resp = self.session.post(f"{self.BASE_URL}/verify_code", json=payload)
         resp.raise_for_status()
-        print(resp.json())
         return resp.json()
 
     def signup(self, username, email, password, verify_code):
@@ -220,7 +205,6 @@ def run_video_job(job_id, image_path, instruction, model, ratio, duration,
         update("mail", "📧 Geçici email alınıyor...")
         fake_mail = FakeMailClient()
         email = fake_mail.get_email()
-        print(email)
         update("mail", f"📧 Email: {email}", {"email": email})
 
         update("code", "📨 Doğrulama kodu gönderiliyor...")
