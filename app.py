@@ -24,36 +24,55 @@ class FakeMailClient:
         self.email = None
         self.token = None
         self._seen_ids = set()
+        self._last_mail_debug = None
 
     def get_email(self):
-        resp = self.session.get(f"{self.BASE}/generate")
+        resp = self.session.get(f"{self.BASE}/generate", timeout=15)
         resp.raise_for_status()
         data = resp.json()
         self.email = data["address"]
         self.token = data["token"]
         return self.email
 
-    def wait_for_code(self, timeout=60):
+    def wait_for_code(self, timeout=90):
         start = time.time()
         while time.time() - start < timeout:
-            resp = self.session.get(f"{self.BASE}/auth/{self.token}")
-            resp.raise_for_status()
-            data = resp.json()
+            try:
+                resp = self.session.get(f"{self.BASE}/auth/{self.token}", timeout=10)
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception:
+                time.sleep(3)
+                continue
 
-            if data.get("token") == False:
+            if data.get("token") is False:
                 raise TimeoutError("Tempmail token süresi doldu!")
 
             emails = data.get("email") or []
+
             for mail in emails:
-                mail_id = mail.get("id") or mail.get("from") or str(mail)
-                if mail_id not in self._seen_ids:
-                    self._seen_ids.add(mail_id)
-                    body = mail.get("body", "") or ""
-                    subject = mail.get("subject", "") or ""
-                    full_text = subject + " " + body
-                    match = re.search(r'\b(\d{4,8})\b', full_text)
-                    if match:
-                        return match.group(1)
+                # Daha güvenilir unique id oluştur
+                mail_id = mail.get("id") or mail.get("date") or mail.get("from") or str(mail)
+                if mail_id in self._seen_ids:
+                    continue
+                self._seen_ids.add(mail_id)
+
+                body    = mail.get("body", "") or ""
+                subject = mail.get("subject", "") or ""
+                sender  = mail.get("from", "") or ""
+                full_text = subject + " " + body
+
+                # Debug için son gelen maili sakla
+                self._last_mail_debug = {
+                    "from":         sender,
+                    "subject":      subject,
+                    "body_preview": body[:400],
+                }
+
+                # Daha spesifik regex: tam sayı sınırı
+                match = re.search(r'(?<!\d)(\d{4,8})(?!\d)', full_text)
+                if match:
+                    return match.group(1)
 
             time.sleep(3)
 
@@ -121,8 +140,8 @@ class WayinClient:
         resp.raise_for_status()
         data = resp.json()["data"]
         upload_url = data["upload_url"]
-        s3_url = data["s3_url"]
-        identify = data["identify"]
+        s3_url     = data["s3_url"]
+        identify   = data["identify"]
 
         with open(image_path, "rb") as f:
             put_resp = requests.put(
@@ -152,15 +171,15 @@ class WayinClient:
         payload = {
             "model": model,
             "model_config": {
-                "ratio": ratio,
-                "duration": duration,
-                "resolution": resolution,
+                "ratio":         ratio,
+                "duration":      duration,
+                "resolution":    resolution,
                 "generateAudio": generate_audio,
-                "camera_fixed": camera_fixed,
-                "image": signed_url,
+                "camera_fixed":  camera_fixed,
+                "image":         signed_url,
             },
             "instruction": instruction,
-            "auto_prompt": auto_prompt,
+            "auto_prompt":  auto_prompt,
         }
         self.session.headers.update({"referer": "https://wayin.ai/wayinvideo/ai-video"})
         resp = self.session.post(f"{self.BASE_URL}/api/video/generate", json=payload)
@@ -182,7 +201,7 @@ class WayinClient:
     def get_video_content(self, generate_id, task_id, fid):
         self.session.headers.update({
             "content-type": "application/x-www-form-urlencoded",
-            "disable-msg": "1",
+            "disable-msg":  "1",
             "referer": f"https://wayin.ai/wayinvideo/ai-video/{task_id}",
         })
         resp = self.session.post(
@@ -198,6 +217,7 @@ class WayinClient:
 
 def run_video_job(job_id, image_path, instruction, model, ratio, duration,
                   resolution, generate_audio, camera_fixed, auto_prompt, password):
+
     def update(stage, msg, extra=None):
         with tasks_lock:
             tasks[job_id]["stage"] = stage
@@ -205,60 +225,119 @@ def run_video_job(job_id, image_path, instruction, model, ratio, duration,
             if extra:
                 tasks[job_id].update(extra)
 
+    def set_error(msg):
+        with tasks_lock:
+            tasks[job_id]["status"] = "error"
+            tasks[job_id]["stage"]  = "error"
+            tasks[job_id]["log"].append(msg)
+
     try:
+        # ── 1. Geçici email al ───────────────────────────────────────────────
         update("mail", "📧 Geçici email alınıyor...")
         fake_mail = FakeMailClient()
-        email = fake_mail.get_email()
+        try:
+            email = fake_mail.get_email()
+        except Exception as e:
+            set_error(f"❌ Tempmail email alınamadı: {e}")
+            return
         update("mail", f"📧 Email: {email}", {"email": email})
 
+        # ── 2. Doğrulama kodu gönder ─────────────────────────────────────────
         update("code", "📨 Doğrulama kodu gönderiliyor...")
         wayin = WayinClient()
-        wayin.send_verify_code(email, reason="SIGNUP")
-
-        update("code", "⏳ Kod bekleniyor (max 60s)...")
-        code = fake_mail.wait_for_code(timeout=60)
-        update("signup", f"✅ Kod alındı: {code}")
-
-        username = random_username()
-        wayin.signup(username, email, password, code)
-        update("upload", f"👤 Kayıt olundu: {username}", {"username": username})
-
-        update("upload", "⬆️ Resim yükleniyor...")
-        upload_result = wayin.upload_image(image_path)
         try:
-            os.unlink(image_path)
-        except:
-            pass
+            result = wayin.send_verify_code(email, reason="SIGNUP")
+            update("code", f"📨 Kod isteği yanıtı: {result}")
+        except Exception as e:
+            set_error(f"❌ Kod gönderilemedi: {e}")
+            return
+
+        # ── 3. Kodu bekle ────────────────────────────────────────────────────
+        update("code", "⏳ Kod bekleniyor (max 90s)...")
+        try:
+            code = fake_mail.wait_for_code(timeout=90)
+            update("signup", f"✅ Kod alındı: {code}")
+        except TimeoutError:
+            debug = fake_mail._last_mail_debug
+            if debug:
+                update("error",
+                    f"❌ Timeout! Son mail → "
+                    f"from: {debug['from']} | "
+                    f"subject: {debug['subject']} | "
+                    f"body: {debug['body_preview']}"
+                )
+            else:
+                update("error", "❌ Timeout! Hiç mail gelmedi. "
+                                "Tempmail API veya Wayin email göndermedi.")
+            with tasks_lock:
+                tasks[job_id]["status"] = "error"
+            return
+
+        # ── 4. Kayıt ol ──────────────────────────────────────────────────────
+        username = random_username()
+        try:
+            signup_result = wayin.signup(username, email, password, code)
+            update("upload", f"👤 Kayıt olundu: {username} → {signup_result}", {"username": username})
+        except Exception as e:
+            set_error(f"❌ Signup hatası: {e}")
+            return
+
+        # ── 5. Resim yükle ───────────────────────────────────────────────────
+        update("upload", "⬆️ Resim yükleniyor...")
+        try:
+            upload_result = wayin.upload_image(image_path)
+        except Exception as e:
+            set_error(f"❌ Resim yükleme hatası: {e}")
+            return
+        finally:
+            try:
+                os.unlink(image_path)
+            except Exception:
+                pass
+
         update("generating", "🎬 Video oluşturuluyor...", {"signed_url": upload_result["signed_url"]})
 
-        video_task = wayin.generate_video(
-            signed_url=upload_result["signed_url"],
-            instruction=instruction,
-            model=model,
-            ratio=ratio,
-            duration=duration,
-            resolution=resolution,
-            generate_audio=generate_audio,
-            camera_fixed=camera_fixed,
-            auto_prompt=auto_prompt,
-        )
+        # ── 6. Video oluştur ─────────────────────────────────────────────────
+        try:
+            video_task = wayin.generate_video(
+                signed_url=upload_result["signed_url"],
+                instruction=instruction,
+                model=model,
+                ratio=ratio,
+                duration=duration,
+                resolution=resolution,
+                generate_audio=generate_audio,
+                camera_fixed=camera_fixed,
+                auto_prompt=auto_prompt,
+            )
+        except Exception as e:
+            set_error(f"❌ Video generate hatası: {e}")
+            return
+
         generate_id = video_task["generate_id"]
-        task_id = video_task["task_id"]
+        task_id     = video_task["task_id"]
         update("polling", f"🔄 Video işleniyor... task_id: {task_id}", {
-            "generate_id": generate_id,
-            "task_id_wayin": task_id
+            "generate_id":    generate_id,
+            "task_id_wayin":  task_id,
         })
 
+        # ── 7. Polling ───────────────────────────────────────────────────────
         start = time.time()
         while time.time() - start < 600:
-            data = wayin.poll_status(generate_id, task_id)
-            status = data["status"]
+            try:
+                data   = wayin.poll_status(generate_id, task_id)
+                status = data["status"]
+            except Exception as e:
+                update("polling", f"⚠️ Poll hatası (devam): {e}")
+                time.sleep(5)
+                continue
+
             update("polling", f"🔄 Status: {status}")
             with tasks_lock:
                 tasks[job_id]["wayin_status"] = status
 
             if status == "DONE":
-                fid = data["results"][0]["fid"]
+                fid     = data["results"][0]["fid"]
                 content = wayin.get_video_content(generate_id, task_id, fid)
                 video_url = content["url"]
                 update("done", "✅ Tamamlandı!", {"video_url": video_url, "fid": fid})
@@ -267,36 +346,32 @@ def run_video_job(job_id, image_path, instruction, model, ratio, duration,
 
                 with gallery_lock:
                     gallery.append({
-                        "id": job_id,
-                        "video_url": video_url,
+                        "id":          job_id,
+                        "video_url":   video_url,
                         "instruction": instruction,
-                        "image_path": image_path,
-                        "model": model,
-                        "ratio": ratio,
-                        "duration": duration,
-                        "resolution": resolution,
-                        "created_at": int(time.time()),
+                        "image_path":  image_path,
+                        "model":       model,
+                        "ratio":       ratio,
+                        "duration":    duration,
+                        "resolution":  resolution,
+                        "created_at":  int(time.time()),
                     })
                 return
 
             elif status == "FAILED":
                 err = data.get("error_code", "unknown")
-                update("error", f"❌ Hata: {err}")
-                with tasks_lock:
-                    tasks[job_id]["status"] = "error"
+                set_error(f"❌ Wayin hata: {err}")
                 return
 
             time.sleep(5)
 
-        update("error", "⏰ Zaman aşımı!")
-        with tasks_lock:
-            tasks[job_id]["status"] = "error"
+        set_error("⏰ Video oluşturma zaman aşımı (10 dk)!")
 
     except Exception as e:
         with tasks_lock:
             tasks[job_id]["status"] = "error"
-            tasks[job_id]["log"].append(f"❌ Exception: {str(e)}")
-            tasks[job_id]["stage"] = "error"
+            tasks[job_id]["log"].append(f"❌ Beklenmeyen hata: {e}")
+            tasks[job_id]["stage"]  = "error"
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
@@ -311,7 +386,7 @@ def api_generate():
         return jsonify({"error": "Resim gerekli"}), 400
 
     file = request.files["image"]
-    ext = os.path.splitext(file.filename)[1] or ".jpg"
+    ext  = os.path.splitext(file.filename)[1] or ".jpg"
 
     tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
     file.save(tmp.name)
@@ -331,14 +406,14 @@ def api_generate():
     job_id = uuid.uuid4().hex[:12]
     with tasks_lock:
         tasks[job_id] = {
-            "id": job_id,
-            "status": "running",
-            "stage": "starting",
-            "log": [],
+            "id":          job_id,
+            "status":      "running",
+            "stage":       "starting",
+            "log":         [],
             "instruction": instruction,
-            "model": model,
-            "video_url": None,
-            "created_at": int(time.time()),
+            "model":       model,
+            "video_url":   None,
+            "created_at":  int(time.time()),
         }
 
     t = threading.Thread(
@@ -348,14 +423,6 @@ def api_generate():
         daemon=True
     )
     t.start()
-
-    def _cleanup():
-        time.sleep(120)
-        try:
-            os.unlink(image_path)
-        except:
-            pass
-    threading.Thread(target=_cleanup, daemon=True).start()
 
     return jsonify({"job_id": job_id})
 
