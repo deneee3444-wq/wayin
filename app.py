@@ -1,7 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 import hashlib, base64, time, re, json, random, string, os, uuid, threading, tempfile
 import requests
-from TempMail import TempMail as TempMailClient
 
 app = Flask(__name__)
 
@@ -13,46 +12,56 @@ tasks_lock = threading.Lock()
 gallery_lock = threading.Lock()
 
 
-# ─── TempMailWrapper ─────────────────────────────────────────────────────────
+# ─── TempMailLolClient ───────────────────────────────────────────────────────
 
-class FakeMailClient:
-    """TempMail.lol üzerinden geçici e-posta oluşturur ve kod bekler."""
+class TempMailLolClient:
+    BASE = "https://api.tempmail.lol/v2"
 
     def __init__(self):
-        self._client = TempMailClient()   # API key gerekmez (ücretsiz tier)
-        self._inbox  = None
-        self.email   = None
+        self.email = None
+        self.token = None
+        self._seen_ids = set()
 
     def get_email(self):
-        self._inbox = self._client.createInbox()
-        self.email  = self._inbox.address
+        resp = requests.post(
+            f"{self.BASE}/inbox/create",
+            headers={"Content-Type": "application/json"},
+            json={}
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        self.email = data["address"]
+        self.token = data["token"]
         return self.email
 
     def wait_for_code(self, timeout=60):
         start = time.time()
-        seen_subjects = set()
-
         while time.time() - start < timeout:
-            try:
-                emails = self._client.getEmails(self._inbox)
-            except Exception:
-                time.sleep(2)
-                continue
+            resp = requests.get(
+                f"{self.BASE}/inbox",
+                params={"token": self.token}
+            )
+            resp.raise_for_status()
+            data = resp.json()
 
-            for mail in emails:
-                key = (mail.sender, mail.subject, mail.date)
-                if key in seen_subjects:
-                    continue
-                seen_subjects.add(key)
+            if data.get("expired"):
+                raise TimeoutError("Posta kutusu süresi doldu!")
 
-                # Konu veya gövdeden 4-8 haneli kodu çıkar
-                for text in [mail.subject or "", mail.body or ""]:
-                    match = re.search(r'\b(\d{4,8})\b', text)
+            for msg in data.get("emails", []):
+                msg_id = msg.get("date")  # date as unique key
+                if msg_id not in self._seen_ids:
+                    self._seen_ids.add(msg_id)
+                    body = msg.get("body", "") or ""
+                    # Search in plain text body
+                    match = re.search(r'\b(\d{4,8})\b', body)
                     if match:
                         return match.group(1)
-
+                    # Also search in HTML if available
+                    html = msg.get("html", "") or ""
+                    match = re.search(r'\b(\d{4,8})\b', re.sub(r'<[^>]+>', ' ', html))
+                    if match:
+                        return match.group(1)
             time.sleep(2)
-
         raise TimeoutError("Kod süresi doldu!")
 
 
@@ -203,7 +212,7 @@ def run_video_job(job_id, image_path, instruction, model, ratio, duration,
 
     try:
         update("mail", "📧 Geçici email alınıyor...")
-        fake_mail = FakeMailClient()
+        fake_mail = TempMailLolClient()
         email = fake_mail.get_email()
         update("mail", f"📧 Email: {email}", {"email": email})
 
