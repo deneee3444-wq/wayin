@@ -107,13 +107,25 @@ class WayinClient:
         resp.raise_for_status()
         return resp.json()
 
-    def signup(self, username, email, password, verify_code):
+    def signup(self, username, email, password, verify_code, invitation_code=None):
         password_md5 = hashlib.md5(password.encode("utf-8")).hexdigest()
         payload = {"username": username, "email": email, "password": password_md5, "verify_code": verify_code}
+        if invitation_code:
+            payload["invitation_code"] = invitation_code
         self.session.headers.update({"uncertified-redirect": "0"})
         resp = self.session.post(f"{self.BASE_URL}/signup", json=payload)
         resp.raise_for_status()
         return resp.json()
+
+    def get_user_info(self):
+        self.session.headers.update({
+            "disable-msg": "0",
+            "referer": "https://wayin.ai/wayinvideo/settings/profile",
+            "uncertified-redirect": "0",
+        })
+        resp = self.session.get(f"{self.BASE_URL}/api/user")
+        resp.raise_for_status()
+        return resp.json()["data"]
 
     def upload_image(self, image_path):
         filename = os.path.basename(image_path)
@@ -201,8 +213,21 @@ class WayinClient:
 
 # ─── Background worker ───────────────────────────────────────────────────────
 
+def register_one_account(password, invitation_code=None):
+    """Tek hesap açar. WayinClient'i döner."""
+    mail = TempMailLolClient()
+    email = mail.get_email()
+    wayin = WayinClient()
+    wayin.send_verify_code(email, reason="SIGNUP")
+    code = mail.wait_for_code(timeout=60)
+    username = random_username()
+    wayin.signup(username, email, password, code, invitation_code=invitation_code)
+    return wayin, username, email
+
+
 def run_video_job(job_id, image_path, instruction, model, ratio, duration,
-                  resolution, generate_audio, camera_fixed, auto_prompt, password):
+                  resolution, generate_audio, camera_fixed, auto_prompt, password,
+                  invite_mode=False):
     def update(stage, msg, extra=None):
         with tasks_lock:
             tasks[job_id]["stage"] = stage
@@ -211,22 +236,49 @@ def run_video_job(job_id, image_path, instruction, model, ratio, duration,
                 tasks[job_id].update(extra)
 
     try:
-        update("mail", "📧 Geçici email alınıyor...")
-        fake_mail = TempMailLolClient()
-        email = fake_mail.get_email()
-        update("mail", f"📧 Email: {email}", {"email": email})
+        if invite_mode:
+            # ── Ana hesabı aç ──────────────────────────────────────────────
+            update("mail", "📧 Ana hesap için email alınıyor...")
+            main_wayin, main_user, main_email = register_one_account(password)
+            update("signup", f"👤 Ana hesap açıldı: {main_email}", {"email": main_email, "username": main_user})
 
-        update("code", "📨 Doğrulama kodu gönderiliyor...")
-        wayin = WayinClient()
-        wayin.send_verify_code(email, reason="SIGNUP")
+            # Invite kodu al
+            update("signup", "🎫 Invite kodu alınıyor...")
+            user_info = main_wayin.get_user_info()
+            invitation_code = user_info.get("invitation_code")
+            if not invitation_code:
+                raise ValueError("Invite kodu alınamadı!")
+            update("signup", f"🎫 Invite kodu: {invitation_code}", {"invitation_code": invitation_code})
 
-        update("code", "⏳ Kod bekleniyor (max 60s)...")
-        code = fake_mail.wait_for_code(timeout=60)
-        update("signup", f"✅ Kod alındı: {code}")
+            # ── 5 alt hesap aç ─────────────────────────────────────────────
+            INVITE_COUNT = 5
+            for i in range(1, INVITE_COUNT + 1):
+                update("signup", f"👥 Alt hesap {i}/{INVITE_COUNT} açılıyor...")
+                try:
+                    register_one_account(password, invitation_code=invitation_code)
+                    update("signup", f"✅ Alt hesap {i} açıldı")
+                except Exception as e:
+                    update("signup", f"⚠️ Alt hesap {i} başarısız: {e}")
 
-        username = random_username()
-        wayin.signup(username, email, password, code)
-        update("upload", f"👤 Kayıt olundu: {username}", {"username": username})
+            wayin = main_wayin
+        else:
+            # ── Normal tek hesap ────────────────────────────────────────────
+            update("mail", "📧 Geçici email alınıyor...")
+            fake_mail = TempMailLolClient()
+            email = fake_mail.get_email()
+            update("mail", f"📧 Email: {email}", {"email": email})
+
+            update("code", "📨 Doğrulama kodu gönderiliyor...")
+            wayin = WayinClient()
+            wayin.send_verify_code(email, reason="SIGNUP")
+
+            update("code", "⏳ Kod bekleniyor (max 60s)...")
+            code = fake_mail.wait_for_code(timeout=60)
+            update("signup", f"✅ Kod alındı: {code}")
+
+            username = random_username()
+            wayin.signup(username, email, password, code)
+            update("upload", f"👤 Kayıt olundu: {username}", {"username": username})
 
         update("upload", "⬆️ Resim yükleniyor...")
         upload_result = wayin.upload_image(image_path)
@@ -323,11 +375,12 @@ def api_generate():
 
     instruction    = request.form.get("instruction", "")
     ratio          = request.form.get("ratio", "16:9")
+    duration       = request.form.get("duration", "12")
+    resolution     = request.form.get("resolution", "720p")
     generate_audio = request.form.get("generate_audio", "true") == "true"
     camera_fixed   = request.form.get("camera_fixed", "false") == "true"
+    invite_mode    = request.form.get("invite_mode", "false") == "true"
     model          = "bytedance/seedance-1.5-pro"
-    duration       = "12"
-    resolution     = "720p"
     auto_prompt    = False
     password       = "Windows700@"
 
@@ -348,6 +401,7 @@ def api_generate():
         target=run_video_job,
         args=(job_id, image_path, instruction, model, ratio, duration,
               resolution, generate_audio, camera_fixed, auto_prompt, password),
+        kwargs={"invite_mode": invite_mode},
         daemon=True
     )
     t.start()
