@@ -47,6 +47,11 @@ textarea,select{background:var(--surface2);border:1px solid var(--border);border
 textarea:focus,select:focus{border-color:var(--accent)}
 select option{background:var(--surface2)}
 textarea{min-height:80px}
+/* Pill groups */
+.pill-group{display:flex;flex-wrap:wrap;gap:6px}
+.pill{background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-family:'JetBrains Mono',monospace;font-size:11px;padding:6px 10px;cursor:pointer;transition:all .18s;white-space:nowrap}
+.pill:hover{border-color:var(--border2);color:var(--text)}
+.pill.active{background:var(--surface3);border-color:var(--text3);color:var(--text);font-weight:600}
 /* Toggles */
 .toggle-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .toggle-item{display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:8px 10px;cursor:pointer;transition:border-color .2s}
@@ -183,13 +188,33 @@ textarea{min-height:80px}
     </div>
 
     <div>
-      <div class="section-label">Oran</div>
-      <select id="ratio">
-        <option value="16:9">16:9</option>
-        <option value="9:16">9:16</option>
-        <option value="1:1">1:1</option>
-        <option value="4:3">4:3</option>
-      </select>
+      <div class="section-label">Aspect Ratio</div>
+      <div class="pill-group" id="ratioGroup">
+        <button class="pill active" data-val="16:9" onclick="selectPill('ratioGroup',this)">⬛ 16:9</button>
+        <button class="pill" data-val="9:16" onclick="selectPill('ratioGroup',this)">▯ 9:16</button>
+        <button class="pill" data-val="1:1" onclick="selectPill('ratioGroup',this)">□ 1:1</button>
+        <button class="pill" data-val="21:9" onclick="selectPill('ratioGroup',this)">⬜ 21:9</button>
+        <button class="pill" data-val="4:3" onclick="selectPill('ratioGroup',this)">▭ 4:3</button>
+        <button class="pill" data-val="3:4" onclick="selectPill('ratioGroup',this)">▯ 3:4</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Resolution</div>
+      <div class="pill-group" id="resolutionGroup">
+        <button class="pill" data-val="480p" onclick="selectPill('resolutionGroup',this)">480P</button>
+        <button class="pill active" data-val="720p" onclick="selectPill('resolutionGroup',this)">720P</button>
+        <button class="pill" data-val="1080p" onclick="selectPill('resolutionGroup',this)">1080P</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Video Length</div>
+      <div class="pill-group" id="durationGroup">
+        <button class="pill" data-val="4" onclick="selectPill('durationGroup',this)">4s</button>
+        <button class="pill" data-val="8" onclick="selectPill('durationGroup',this)">8s</button>
+        <button class="pill active" data-val="12" onclick="selectPill('durationGroup',this)">12s</button>
+      </div>
     </div>
 
     <div>
@@ -202,6 +227,10 @@ textarea{min-height:80px}
         <div class="toggle-item" onclick="toggleOpt('camera')">
           <span class="ti-label">Kamera Sabit</span>
           <div class="toggle-switch" id="toggle_camera"></div>
+        </div>
+        <div class="toggle-item" style="grid-column:1/-1" onclick="toggleOpt('invite')">
+          <span class="ti-label">🎫 Invite Zinciri (5 hesap)</span>
+          <div class="toggle-switch" id="toggle_invite"></div>
         </div>
       </div>
     </div>
@@ -264,9 +293,19 @@ textarea{min-height:80px}
 <div class="toasts" id="toasts"></div>
 
 <script>
-const toggleState = { audio: true, camera: false };
+const toggleState = { audio: true, camera: false, invite: false };
 let capturedFrameBlob = null;
 let modalVideoUrl = '';
+
+function selectPill(groupId, btn) {
+  document.querySelectorAll(`#${groupId} .pill`).forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function getPillVal(groupId) {
+  const active = document.querySelector(`#${groupId} .pill.active`);
+  return active ? active.dataset.val : null;
+}
 
 function switchTab(tab) {
   ['tasks','gallery'].forEach(t => {
@@ -316,9 +355,12 @@ async function startGenerate() {
   const fd = new FormData();
   fd.append('image', file);
   fd.append('instruction', document.getElementById('instruction').value);
-  fd.append('ratio', document.getElementById('ratio').value);
+  fd.append('ratio',      getPillVal('ratioGroup')      || '16:9');
+  fd.append('resolution', getPillVal('resolutionGroup') || '720p');
+  fd.append('duration',   getPillVal('durationGroup')   || '12');
   fd.append('generate_audio', toggleState.audio);
-  fd.append('camera_fixed', toggleState.camera);
+  fd.append('camera_fixed',   toggleState.camera);
+  fd.append('invite_mode',    toggleState.invite);
   try {
     const r = await fetch('/api/generate', {method:'POST', body:fd});
     const d = await r.json();
