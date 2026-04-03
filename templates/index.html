@@ -183,6 +183,17 @@ textarea{min-height:80px}
     </div>
 
     <div>
+      <div class="section-label">Son Kare <span style="color:var(--text3);font-weight:400">(opsiyonel)</span></div>
+      <div class="drop-zone" id="lastFrameZone">
+        <span class="dz-icon">🎞️</span>
+        <div class="dz-text">Son kare görseli</div>
+        <div class="dz-sub">Boş bırakılabilir</div>
+        <input type="file" id="lastFrameInput" accept="image/*">
+        <img class="preview-img" id="lastFramePreview" alt="last frame preview">
+      </div>
+    </div>
+
+    <div>
       <div class="section-label">Prompt / Talimat</div>
       <textarea id="instruction" placeholder="Videoda ne olsun? (boş bırakılabilir)"></textarea>
     </div>
@@ -295,6 +306,7 @@ textarea{min-height:80px}
 <script>
 const toggleState = { audio: true, camera: false, invite: false };
 let capturedFrameBlob = null;
+let lastFrameBlob = null;
 let modalVideoUrl = '';
 
 function selectPill(groupId, btn) {
@@ -344,6 +356,25 @@ function setFrameBlob(blob) {
   dropZone.classList.add('has-image');
 }
 
+// Last frame zone
+const lastFrameZone  = document.getElementById('lastFrameZone');
+const lastFrameInput = document.getElementById('lastFrameInput');
+const lastFramePreview = document.getElementById('lastFramePreview');
+lastFrameInput.addEventListener('change', e => { if (e.target.files[0]) setLastFrame(e.target.files[0]); });
+lastFrameZone.addEventListener('dragover',  e => { e.preventDefault(); lastFrameZone.classList.add('drag-over'); });
+lastFrameZone.addEventListener('dragleave', () => lastFrameZone.classList.remove('drag-over'));
+lastFrameZone.addEventListener('drop', e => {
+  e.preventDefault(); lastFrameZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) setLastFrame(f);
+});
+function setLastFrame(file) {
+  lastFrameBlob = file;
+  const r = new FileReader();
+  r.onload = ev => { lastFramePreview.src = ev.target.result; lastFrameZone.classList.add('has-image'); };
+  r.readAsDataURL(file);
+}
+
 // Generate
 async function startGenerate() {
   const file = capturedFrameBlob
@@ -361,6 +392,7 @@ async function startGenerate() {
   fd.append('generate_audio', toggleState.audio);
   fd.append('camera_fixed',   toggleState.camera);
   fd.append('invite_mode',    toggleState.invite);
+  if (lastFrameBlob) fd.append('last_frame', lastFrameBlob instanceof File ? lastFrameBlob : new File([lastFrameBlob], 'last_frame.jpg', {type:'image/jpeg'}));
   try {
     const r = await fetch('/api/generate', {method:'POST', body:fd});
     const d = await r.json();
