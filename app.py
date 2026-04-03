@@ -165,17 +165,21 @@ class WayinClient:
 
     def generate_video(self, signed_url, instruction="", model="bytedance/seedance-1.5-pro",
                        ratio="16:9", duration="12", resolution="720p",
-                       generate_audio=True, camera_fixed=False, auto_prompt=False):
+                       generate_audio=True, camera_fixed=False, auto_prompt=False,
+                       last_frame_url=None):
+        model_config = {
+            "ratio": ratio,
+            "duration": duration,
+            "resolution": resolution,
+            "generateAudio": generate_audio,
+            "camera_fixed": camera_fixed,
+            "image": signed_url,
+        }
+        if last_frame_url:
+            model_config["lastFrame"] = last_frame_url
         payload = {
             "model": model,
-            "model_config": {
-                "ratio": ratio,
-                "duration": duration,
-                "resolution": resolution,
-                "generateAudio": generate_audio,
-                "camera_fixed": camera_fixed,
-                "image": signed_url,
-            },
+            "model_config": model_config,
             "instruction": instruction,
             "auto_prompt": auto_prompt,
         }
@@ -227,7 +231,7 @@ def register_one_account(password, invitation_code=None):
 
 def run_video_job(job_id, image_path, instruction, model, ratio, duration,
                   resolution, generate_audio, camera_fixed, auto_prompt, password,
-                  invite_mode=False):
+                  invite_mode=False, last_frame_path=None):
     def update(stage, msg, extra=None):
         with tasks_lock:
             tasks[job_id]["stage"] = stage
@@ -284,6 +288,15 @@ def run_video_job(job_id, image_path, instruction, model, ratio, duration,
         upload_result = wayin.upload_image(image_path)
         try: os.unlink(image_path)
         except: pass
+
+        last_frame_url = None
+        if last_frame_path and os.path.exists(last_frame_path):
+            update("upload", "⬆️ Son kare yükleniyor...")
+            lf_result = wayin.upload_image(last_frame_path)
+            try: os.unlink(last_frame_path)
+            except: pass
+            last_frame_url = lf_result["signed_url"]
+
         update("generating", "🎬 Video oluşturuluyor...", {"signed_url": upload_result["signed_url"]})
 
         video_task = wayin.generate_video(
@@ -296,6 +309,7 @@ def run_video_job(job_id, image_path, instruction, model, ratio, duration,
             generate_audio=generate_audio,
             camera_fixed=camera_fixed,
             auto_prompt=auto_prompt,
+            last_frame_url=last_frame_url,
         )
         generate_id = video_task["generate_id"]
         task_id = video_task["task_id"]
@@ -384,6 +398,16 @@ def api_generate():
     auto_prompt    = False
     password       = "Windows700@"
 
+    # Last frame (optional)
+    last_frame_path = None
+    if "last_frame" in request.files and request.files["last_frame"].filename:
+        lf_file = request.files["last_frame"]
+        lf_ext  = os.path.splitext(lf_file.filename)[1] or ".jpg"
+        lf_tmp  = tempfile.NamedTemporaryFile(suffix=lf_ext, delete=False)
+        lf_file.save(lf_tmp.name)
+        lf_tmp.close()
+        last_frame_path = lf_tmp.name
+
     job_id = uuid.uuid4().hex[:12]
     with tasks_lock:
         tasks[job_id] = {
@@ -401,7 +425,7 @@ def api_generate():
         target=run_video_job,
         args=(job_id, image_path, instruction, model, ratio, duration,
               resolution, generate_audio, camera_fixed, auto_prompt, password),
-        kwargs={"invite_mode": invite_mode},
+        kwargs={"invite_mode": invite_mode, "last_frame_path": last_frame_path},
         daemon=True
     )
     t.start()
