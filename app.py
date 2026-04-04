@@ -5,11 +5,105 @@ import requests
 app = Flask(__name__)
 
 # ─── In-memory persistence ───────────────────────────────────────────────────
-# Tasks and gallery survive page refresh (stay until process restart)
-tasks = {}       # task_id -> task dict
-gallery = []     # list of completed video dicts
+tasks = {}
+gallery = []
 tasks_lock = threading.Lock()
 gallery_lock = threading.Lock()
+
+
+# ─── Model Kataloğu ──────────────────────────────────────────────────────────
+
+VIDEO_TYPE_LABELS = {
+    "txt2vid": "Metinden Videoya",
+    "img2vid": "Görüntüden Videoya",
+    "ref2vid": "Referans Görselden Videoya",
+}
+
+MODEL_CATALOG = {
+    "txt2vid": {
+        "Google": [
+            {"name": "Veo 3.1 Lite",  "model": "veo-3.1-lite-generate-001",  "ratios": ["16:9","9:16"], "resolutions": ["720p","1080p"], "durations": ["4","6","8"],    "audio": True,  "camera_fixed": False},
+            {"name": "Veo 3.1",       "model": "veo-3.1-generate-001",       "ratios": ["16:9","9:16"], "resolutions": ["720p","1080p"], "durations": ["4","6","8"],    "audio": True,  "camera_fixed": False},
+            {"name": "Veo 3.1 Fast",  "model": "veo-3.1-fast-generate-001",  "ratios": ["16:9","9:16"], "resolutions": ["720p","1080p"], "durations": ["4","6","8"],    "audio": True,  "camera_fixed": False},
+            {"name": "Veo 3.0",       "model": "veo-3.0-generate-001",       "ratios": ["16:9","9:16"], "resolutions": ["720p","1080p"], "durations": ["4","6","8"],    "audio": True,  "camera_fixed": False},
+            {"name": "Veo 3.0 Fast",  "model": "veo-3.0-fast-generate-001",  "ratios": ["16:9","9:16"], "resolutions": ["720p","1080p"], "durations": ["4","6","8"],    "audio": True,  "camera_fixed": False},
+            {"name": "Veo 2.0",       "model": "veo-2.0-generate-001",       "ratios": ["16:9","9:16"], "resolutions": ["720p"],         "durations": ["5","6","7","8"], "audio": False, "camera_fixed": False},
+        ],
+        "ByteDance": [
+            {"name": "Seedance 1.5 Pro", "model": "bytedance/seedance-1.5-pro",      "ratios": ["16:9","9:16","1:1","21:9","4:3","3:4"], "resolutions": ["480p","720p","1080p"], "durations": ["4","8","12"], "audio": True,  "camera_fixed": False},
+            {"name": "Seedance 1.0 Pro", "model": "bytedance/v1-pro-text-to-video",  "ratios": ["16:9","9:16","1:1","21:9","4:3","3:4"], "resolutions": ["480p","720p","1080p"], "durations": ["5","10"],     "audio": False, "camera_fixed": True},
+            {"name": "Seedance 1.0 Lite","model": "bytedance/v1-lite-text-to-video", "ratios": ["16:9","9:16","1:1","4:3","3:4"],         "resolutions": ["480p","720p","1080p"], "durations": ["5","10"],     "audio": False, "camera_fixed": True},
+        ],
+        "OpenAI": [
+            {"name": "Sora 2", "model": "sora-2", "ratios": ["16:9","9:16"], "resolutions": ["720p"], "durations": ["4","8","12"], "audio": False, "camera_fixed": False},
+        ],
+        "Wan": [
+            {"name": "Wan 2.6",      "model": "wan2.6-t2v",        "ratios": ["16:9","9:16","1:1","4:3","3:4"], "resolutions": ["720p","1080p"],        "durations": ["5","10","15"], "audio": True,  "camera_fixed": False},
+            {"name": "Wan 2.5",      "model": "wan2.5-t2v-preview","ratios": ["16:9","9:16","1:1","4:3","3:4"], "resolutions": ["480p","720p","1080p"], "durations": ["5","10"],      "audio": True,  "camera_fixed": False},
+            {"name": "Wan 2.2 Plus", "model": "wan2.2-t2v-plus",   "ratios": ["16:9","9:16","1:1"],             "resolutions": ["480p","1080p"],         "durations": ["5"],           "audio": False, "camera_fixed": False},
+        ],
+        "Kling": [
+            {"name": "Kling 3.0 Omni",     "model": "kling-v3-omni",                      "ratios": ["16:9","9:16","1:1"], "resolutions": ["720p","1080p"], "durations": ["3","4","5","6","7","8","9","10","12","15"], "audio": True,  "camera_fixed": False},
+            {"name": "Kling 3.0",          "model": "kling-v3",                           "ratios": ["16:9","9:16","1:1"], "resolutions": ["720p","1080p"], "durations": ["3","4","5","6","7","8","9","10","12","15"], "audio": True,  "camera_fixed": False},
+            {"name": "Kling O1",           "model": "kling-video-o1",                     "ratios": ["16:9","9:16","1:1"], "resolutions": ["720p","1080p"], "durations": ["5","10"],                                   "audio": False, "camera_fixed": False},
+            {"name": "Kling 2.5 Turbo Pro","model": "kling/v2-5-turbo-text-to-video-pro", "ratios": ["16:9","9:16","1:1"], "resolutions": ["1080p"],        "durations": ["5","10"],                                   "audio": False, "camera_fixed": False},
+            {"name": "Kling 2.6",          "model": "kling-2.6/text-to-video",            "ratios": ["16:9","9:16","1:1"], "resolutions": ["1080p"],        "durations": ["5","10"],                                   "audio": True,  "camera_fixed": False},
+        ],
+    },
+    "img2vid": {
+        "Google": [
+            {"name": "Veo 3.1 Lite", "model": "veo-3.1-lite-generate-001",  "ratios": ["16:9","9:16"], "resolutions": ["720p","1080p"], "durations": ["4","6","8"],    "audio": True,  "camera_fixed": False, "last_frame": True},
+            {"name": "Veo 3.1",      "model": "veo-3.1-generate-001",       "ratios": ["16:9","9:16"], "resolutions": ["720p","1080p"], "durations": ["4","6","8"],    "audio": True,  "camera_fixed": False, "last_frame": True},
+            {"name": "Veo 3.1 Fast", "model": "veo-3.1-fast-generate-001",  "ratios": ["16:9","9:16"], "resolutions": ["720p","1080p"], "durations": ["4","6","8"],    "audio": True,  "camera_fixed": False, "last_frame": True},
+            {"name": "Veo 3.0",      "model": "veo-3.0-generate-001",       "ratios": ["16:9","9:16"], "resolutions": ["720p","1080p"], "durations": ["4","6","8"],    "audio": True,  "camera_fixed": False, "last_frame": False},
+            {"name": "Veo 3.0 Fast", "model": "veo-3.0-fast-generate-001",  "ratios": ["16:9","9:16"], "resolutions": ["720p","1080p"], "durations": ["4","6","8"],    "audio": True,  "camera_fixed": False, "last_frame": False},
+            {"name": "Veo 2.0",      "model": "veo-2.0-generate-001",       "ratios": ["16:9","9:16"], "resolutions": ["720p"],         "durations": ["5","6","7","8"], "audio": False, "camera_fixed": False, "last_frame": False},
+        ],
+        "ByteDance": [
+            {"name": "Seedance 1.5 Pro",     "model": "bytedance/seedance-1.5-pro",           "ratios": ["16:9","9:16","1:1","21:9","4:3","3:4"], "resolutions": ["480p","720p","1080p"], "durations": ["4","8","12"], "audio": True,  "camera_fixed": False, "last_frame": True},
+            {"name": "Seedance 1.0 Pro",     "model": "bytedance/v1-pro-image-to-video",      "ratios": ["16:9","9:16","1:1","21:9","4:3","3:4"], "resolutions": ["480p","720p","1080p"], "durations": ["5","10"],     "audio": False, "camera_fixed": True,  "last_frame": False},
+            {"name": "Seedance 1.0 Lite",    "model": "bytedance/v1-lite-image-to-video",     "ratios": ["16:9","9:16","1:1","4:3","3:4"],         "resolutions": ["480p","720p","1080p"], "durations": ["5","10"],     "audio": False, "camera_fixed": True,  "last_frame": True},
+            {"name": "Seedance 1.0 Pro Fast","model": "bytedance/v1-pro-fast-image-to-video", "ratios": ["16:9","9:16","1:1","4:3","3:4"],         "resolutions": ["720p","1080p"],         "durations": ["5","10"],     "audio": False, "camera_fixed": False, "last_frame": False},
+        ],
+        "OpenAI": [
+            {"name": "Sora 2", "model": "sora-2", "ratios": ["16:9","9:16"], "resolutions": ["720p"], "durations": ["4","8","12"], "audio": False, "camera_fixed": False, "last_frame": False},
+        ],
+        "Wan": [
+            {"name": "Wan 2.6",      "model": "wan2.6-i2v",        "ratios": ["16:9","9:16","1:1","4:3","3:4"], "resolutions": ["720p","1080p"],        "durations": ["5","10","15"], "audio": True,  "camera_fixed": False, "last_frame": False},
+            {"name": "Wan 2.5",      "model": "wan2.5-i2v-preview","ratios": ["16:9","9:16","1:1","4:3","3:4"], "resolutions": ["480p","720p","1080p"], "durations": ["5","10"],      "audio": True,  "camera_fixed": False, "last_frame": False},
+            {"name": "Wan 2.2 Plus", "model": "wan2.2-i2v-plus",   "ratios": ["16:9","9:16","1:1","4:3","3:4"], "resolutions": ["480p","1080p"],         "durations": ["5"],           "audio": False, "camera_fixed": False, "last_frame": False},
+        ],
+        "Kling": [
+            {"name": "Kling 3.0 Omni",     "model": "kling-v3-omni",                        "ratios": ["16:9","9:16","1:1"], "resolutions": ["720p","1080p"], "durations": ["3","4","5","6","7","8","9","10","12","15"], "audio": True,  "camera_fixed": False, "last_frame": True},
+            {"name": "Kling 3.0",          "model": "kling-v3",                             "ratios": ["16:9","9:16","1:1"], "resolutions": ["720p","1080p"], "durations": ["3","4","5","6","7","8","9","10","12","15"], "audio": True,  "camera_fixed": False, "last_frame": True},
+            {"name": "Kling O1",           "model": "kling-video-o1",                       "ratios": ["16:9","9:16","1:1"], "resolutions": ["720p","1080p"], "durations": ["3","4","5","6","7","8","9","10"],           "audio": False, "camera_fixed": False, "last_frame": True},
+            {"name": "Kling 2.5 Turbo Pro","model": "kling/v2-5-turbo-image-to-video-pro",  "ratios": ["16:9","9:16","1:1"], "resolutions": ["1080p"],        "durations": ["5","10"],                                   "audio": False, "camera_fixed": False, "last_frame": True},
+            {"name": "Kling 2.6",          "model": "kling-2.6/image-to-video",             "ratios": ["16:9","9:16","1:1"], "resolutions": ["1080p"],        "durations": ["5","10"],                                   "audio": True,  "camera_fixed": False, "last_frame": False},
+        ],
+        "Runway": [
+            {"name": "Gen-4 Turbo",  "model": "runway-gen4_turbo",  "ratios": ["16:9","9:16","1:1","4:3","3:4"], "resolutions": ["720p"], "durations": ["5","10"], "audio": False, "camera_fixed": False, "last_frame": False},
+            {"name": "Gen-3A Turbo", "model": "runway-gen3a_turbo", "ratios": ["3:5","5:3"],                      "resolutions": ["720p"], "durations": ["5","10"], "audio": False, "camera_fixed": False, "last_frame": False},
+        ],
+    },
+    "ref2vid": {
+        "Google": [
+            {"name": "Veo 3.1", "model": "veo-3.1-generate-001", "ratios": ["16:9"], "resolutions": ["720p","1080p"], "durations": ["4","6","8"], "audio": True,  "camera_fixed": False, "max_ref_images": 3},
+        ],
+        "Kling": [
+            {"name": "Kling 3.0 Omni", "model": "kling-v3-omni",  "ratios": ["16:9","9:16","1:1"], "resolutions": ["720p","1080p"], "durations": ["3","4","5","6","7","8","9","10","12","15"], "audio": True,  "camera_fixed": False, "max_ref_images": 5},
+            {"name": "Kling O1",        "model": "kling-video-o1", "ratios": ["16:9","9:16","1:1"], "resolutions": ["720p","1080p"], "durations": ["3","4","5","6","7","8","9","10"],           "audio": False, "camera_fixed": False, "max_ref_images": 5},
+        ],
+    },
+}
+
+
+def get_model_info(video_type, model_id):
+    """MODEL_CATALOG'dan model bilgisini döner."""
+    for group_models in MODEL_CATALOG.get(video_type, {}).values():
+        for m in group_models:
+            if m["model"] == model_id:
+                return m
+    return None
 
 
 # ─── TempMailLolClient ───────────────────────────────────────────────────────
@@ -163,20 +257,7 @@ class WayinClient:
         signed_url = refresh_resp.json()["data"]["url"]
         return {"identify": identify, "s3_url": s3_url, "signed_url": signed_url}
 
-    def generate_video(self, signed_url, instruction="", model="bytedance/seedance-1.5-pro",
-                       ratio="16:9", duration="12", resolution="720p",
-                       generate_audio=True, camera_fixed=False, auto_prompt=False,
-                       last_frame_url=None):
-        model_config = {
-            "ratio": ratio,
-            "duration": duration,
-            "resolution": resolution,
-            "generateAudio": generate_audio,
-            "camera_fixed": camera_fixed,
-            "image": signed_url,
-        }
-        if last_frame_url:
-            model_config["lastFrame"] = last_frame_url
+    def generate_video(self, model, model_config, instruction="", auto_prompt=False):
         payload = {
             "model": model,
             "model_config": model_config,
@@ -229,9 +310,9 @@ def register_one_account(password, invitation_code=None):
     return wayin, username, email
 
 
-def run_video_job(job_id, image_path, instruction, model, ratio, duration,
-                  resolution, generate_audio, camera_fixed, auto_prompt, password,
-                  invite_mode=False, last_frame_path=None):
+def run_video_job(job_id, instruction, model, model_config_base, auto_prompt, password,
+                  video_type="img2vid", invite_mode=False,
+                  image_path=None, last_frame_path=None, reference_paths=None):
     def update(stage, msg, extra=None):
         with tasks_lock:
             tasks[job_id]["stage"] = stage
@@ -241,12 +322,10 @@ def run_video_job(job_id, image_path, instruction, model, ratio, duration,
 
     try:
         if invite_mode:
-            # ── Ana hesabı aç ──────────────────────────────────────────────
             update("mail", "📧 Ana hesap için email alınıyor...")
             main_wayin, main_user, main_email = register_one_account(password)
             update("signup", f"👤 Ana hesap açıldı: {main_email}", {"email": main_email, "username": main_user})
 
-            # Invite kodu al
             update("signup", "🎫 Invite kodu alınıyor...")
             user_info = main_wayin.get_user_info()
             invitation_code = user_info.get("invitation_code")
@@ -254,7 +333,6 @@ def run_video_job(job_id, image_path, instruction, model, ratio, duration,
                 raise ValueError("Invite kodu alınamadı!")
             update("signup", f"🎫 Invite kodu: {invitation_code}", {"invitation_code": invitation_code})
 
-            # ── 5 alt hesap aç ─────────────────────────────────────────────
             INVITE_COUNT = 5
             for i in range(1, INVITE_COUNT + 1):
                 update("signup", f"👥 Alt hesap {i}/{INVITE_COUNT} açılıyor...")
@@ -263,10 +341,8 @@ def run_video_job(job_id, image_path, instruction, model, ratio, duration,
                     update("signup", f"✅ Alt hesap {i} açıldı")
                 except Exception as e:
                     update("signup", f"⚠️ Alt hesap {i} başarısız: {e}")
-
             wayin = main_wayin
         else:
-            # ── Normal tek hesap ────────────────────────────────────────────
             update("mail", "📧 Geçici email alınıyor...")
             fake_mail = TempMailLolClient()
             email = fake_mail.get_email()
@@ -284,65 +360,68 @@ def run_video_job(job_id, image_path, instruction, model, ratio, duration,
             wayin.signup(username, email, password, code)
             update("upload", f"👤 Kayıt olundu: {username}", {"username": username})
 
-        update("upload", "⬆️ Resim yükleniyor...")
-        upload_result = wayin.upload_image(image_path)
-        try: os.unlink(image_path)
-        except: pass
+        # ── Görselleri yükle ve model_config oluştur ──
+        model_config = dict(model_config_base)
 
-        last_frame_url = None
-        if last_frame_path and os.path.exists(last_frame_path):
-            update("upload", "⬆️ Son kare yükleniyor...")
-            lf_result = wayin.upload_image(last_frame_path)
-            try: os.unlink(last_frame_path)
+        if video_type == "img2vid" and image_path:
+            update("upload", "⬆️ Resim yükleniyor...")
+            img_result = wayin.upload_image(image_path)
+            try: os.unlink(image_path)
             except: pass
-            last_frame_url = lf_result["signed_url"]
+            model_config["image"] = img_result["signed_url"]
 
-        update("generating", "🎬 Video oluşturuluyor...", {"signed_url": upload_result["signed_url"]})
+            if last_frame_path and os.path.exists(last_frame_path):
+                update("upload", "⬆️ Son kare yükleniyor...")
+                lf_result = wayin.upload_image(last_frame_path)
+                try: os.unlink(last_frame_path)
+                except: pass
+                model_config["lastFrame"] = lf_result["signed_url"]
 
-        video_task = wayin.generate_video(
-            signed_url=upload_result["signed_url"],
-            instruction=instruction,
-            model=model,
-            ratio=ratio,
-            duration=duration,
-            resolution=resolution,
-            generate_audio=generate_audio,
-            camera_fixed=camera_fixed,
-            auto_prompt=auto_prompt,
-            last_frame_url=last_frame_url,
-        )
-        generate_id = video_task["generate_id"]
-        task_id = video_task["task_id"]
-        update("polling", f"🔄 Video işleniyor... task_id: {task_id}", {"generate_id": generate_id, "task_id_wayin": task_id})
+        elif video_type == "ref2vid" and reference_paths:
+            ref_urls = []
+            for i, path in enumerate(reference_paths, 1):
+                update("upload", f"⬆️ Referans görsel {i}/{len(reference_paths)} yükleniyor...")
+                r = wayin.upload_image(path)
+                try: os.unlink(path)
+                except: pass
+                ref_urls.append(r["signed_url"])
+            model_config["reference_images"] = ref_urls
 
-        # Poll loop
+        # ── Video oluştur ──
+        update("generating", "🎬 Video oluşturuluyor...")
+        video_task = wayin.generate_video(model, model_config, instruction, auto_prompt)
+        generate_id  = video_task["generate_id"]
+        task_id_wayin = video_task["task_id"]
+        update("polling", f"🔄 Video işleniyor...", {"generate_id": generate_id, "task_id_wayin": task_id_wayin})
+
+        # ── Poll ──
         start = time.time()
         while time.time() - start < 600:
-            data = wayin.poll_status(generate_id, task_id)
+            data   = wayin.poll_status(generate_id, task_id_wayin)
             status = data["status"]
             update("polling", f"🔄 Status: {status}")
             with tasks_lock:
                 tasks[job_id]["wayin_status"] = status
 
             if status == "DONE":
-                fid = data["results"][0]["fid"]
-                content = wayin.get_video_content(generate_id, task_id, fid)
+                fid     = data["results"][0]["fid"]
+                content = wayin.get_video_content(generate_id, task_id_wayin, fid)
                 video_url = content["url"]
-                update("done", f"✅ Tamamlandı!", {"video_url": video_url, "fid": fid})
+                update("done", "✅ Tamamlandı!", {"video_url": video_url, "fid": fid})
                 with tasks_lock:
                     tasks[job_id]["status"] = "done"
-
-                # Add to gallery
+                m_info = get_model_info(video_type, model)
                 with gallery_lock:
                     gallery.append({
-                        "id": job_id,
-                        "video_url": video_url,
+                        "id":         job_id,
+                        "video_url":  video_url,
                         "instruction": instruction,
-                        "image_path": image_path,
-                        "model": model,
-                        "ratio": ratio,
-                        "duration": duration,
-                        "resolution": resolution,
+                        "model":      model,
+                        "model_name": m_info["name"] if m_info else model,
+                        "video_type": video_type,
+                        "ratio":      model_config_base.get("ratio", "16:9"),
+                        "duration":   model_config_base.get("duration", "?"),
+                        "resolution": model_config_base.get("resolution", "?"),
                         "created_at": int(time.time()),
                     })
                 return
@@ -373,70 +452,93 @@ def run_video_job(job_id, image_path, instruction, model, ratio, duration,
 def index():
     return render_template("index.html")
 
+
+@app.route("/api/models")
+def api_models():
+    return jsonify({"catalog": MODEL_CATALOG, "labels": VIDEO_TYPE_LABELS})
+
+
 @app.route("/api/generate", methods=["POST"])
 def api_generate():
-    if "image" not in request.files:
-        return jsonify({"error": "Resim gerekli"}), 400
+    video_type  = request.form.get("video_type", "img2vid")
+    model       = request.form.get("model", "bytedance/seedance-1.5-pro")
+    instruction = request.form.get("instruction", "")
+    ratio       = request.form.get("ratio", "16:9")
+    duration    = request.form.get("duration", "12")
+    resolution  = request.form.get("resolution", "720p")
+    invite_mode = request.form.get("invite_mode", "false") == "true"
+    auto_prompt = False
+    password    = "Windows700@"
 
-    file = request.files["image"]
-    ext = os.path.splitext(file.filename)[1] or ".jpg"
+    m_info = get_model_info(video_type, model)
 
-    # Save to a temp file — deleted automatically after upload
-    tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
-    file.save(tmp.name)
-    tmp.close()
-    image_path = tmp.name
+    # Yalnızca modelin desteklediği parametreleri ekle
+    model_config_base = {"ratio": ratio, "duration": duration, "resolution": resolution}
+    if m_info and m_info.get("audio"):
+        model_config_base["generateAudio"] = (request.form.get("generate_audio", "false") == "true")
+    if m_info and m_info.get("camera_fixed"):
+        model_config_base["camera_fixed"] = (request.form.get("camera_fixed", "false") == "true")
 
-    instruction    = request.form.get("instruction", "")
-    ratio          = request.form.get("ratio", "16:9")
-    duration       = request.form.get("duration", "12")
-    resolution     = request.form.get("resolution", "720p")
-    generate_audio = request.form.get("generate_audio", "true") == "true"
-    camera_fixed   = request.form.get("camera_fixed", "false") == "true"
-    invite_mode    = request.form.get("invite_mode", "false") == "true"
-    model          = "bytedance/seedance-1.5-pro"
-    auto_prompt    = False
-    password       = "Windows700@"
-
-    # Last frame (optional)
+    # Dosya işlemleri
+    image_path      = None
     last_frame_path = None
-    if "last_frame" in request.files and request.files["last_frame"].filename:
-        lf_file = request.files["last_frame"]
-        lf_ext  = os.path.splitext(lf_file.filename)[1] or ".jpg"
-        lf_tmp  = tempfile.NamedTemporaryFile(suffix=lf_ext, delete=False)
-        lf_file.save(lf_tmp.name)
-        lf_tmp.close()
-        last_frame_path = lf_tmp.name
+    reference_paths = []
+
+    if video_type == "img2vid":
+        if "image" not in request.files or not request.files["image"].filename:
+            return jsonify({"error": "Resim gerekli"}), 400
+        f   = request.files["image"]
+        ext = os.path.splitext(f.filename)[1] or ".jpg"
+        tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+        f.save(tmp.name); tmp.close()
+        image_path = tmp.name
+
+        if "last_frame" in request.files and request.files["last_frame"].filename:
+            lf     = request.files["last_frame"]
+            lf_ext = os.path.splitext(lf.filename)[1] or ".jpg"
+            lf_tmp = tempfile.NamedTemporaryFile(suffix=lf_ext, delete=False)
+            lf.save(lf_tmp.name); lf_tmp.close()
+            last_frame_path = lf_tmp.name
+
+    elif video_type == "ref2vid":
+        ref_files = request.files.getlist("ref_images")
+        if not any(rf.filename for rf in ref_files):
+            return jsonify({"error": "En az 1 referans görsel gerekli"}), 400
+        for rf in ref_files:
+            if rf.filename:
+                ext = os.path.splitext(rf.filename)[1] or ".jpg"
+                tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+                rf.save(tmp.name); tmp.close()
+                reference_paths.append(tmp.name)
 
     job_id = uuid.uuid4().hex[:12]
     with tasks_lock:
         tasks[job_id] = {
-            "id": job_id,
-            "status": "running",
-            "stage": "starting",
-            "log": [],
+            "id":          job_id,
+            "status":      "running",
+            "stage":       "starting",
+            "log":         [],
             "instruction": instruction,
-            "model": model,
-            "video_url": None,
-            "created_at": int(time.time()),
+            "model":       model,
+            "model_name":  m_info["name"] if m_info else model,
+            "video_type":  video_type,
+            "video_url":   None,
+            "created_at":  int(time.time()),
         }
 
     t = threading.Thread(
         target=run_video_job,
-        args=(job_id, image_path, instruction, model, ratio, duration,
-              resolution, generate_audio, camera_fixed, auto_prompt, password),
-        kwargs={"invite_mode": invite_mode, "last_frame_path": last_frame_path},
+        args=(job_id, instruction, model, model_config_base, auto_prompt, password),
+        kwargs={
+            "video_type":       video_type,
+            "invite_mode":      invite_mode,
+            "image_path":       image_path,
+            "last_frame_path":  last_frame_path,
+            "reference_paths":  reference_paths,
+        },
         daemon=True
     )
     t.start()
-
-    # Temp file is deleted inside the worker after upload; schedule cleanup fallback
-    def _cleanup():
-        time.sleep(120)
-        try: os.unlink(image_path)
-        except: pass
-    threading.Thread(target=_cleanup, daemon=True).start()
-
     return jsonify({"job_id": job_id})
 
 @app.route("/api/task/delete/<job_id>", methods=["DELETE"])
