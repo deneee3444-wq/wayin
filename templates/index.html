@@ -53,9 +53,10 @@ textarea{min-height:80px}
 .pill:hover{border-color:var(--border2);color:var(--text)}
 .pill.active{background:var(--surface3);border-color:var(--text3);color:var(--text);font-weight:600}
 /* Toggles */
-.toggle-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.toggle-item{display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:8px 10px;cursor:pointer;transition:border-color .2s}
+.toggle-grid{display:flex;flex-wrap:wrap;gap:8px}
+.toggle-item{display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:8px 10px;cursor:pointer;transition:border-color .2s;flex:1 1 calc(50% - 4px);min-width:120px}
 .toggle-item:hover{border-color:var(--border2)}
+.toggle-item.full{flex:1 1 100%}
 .ti-label{font-size:11px;color:var(--text2);font-family:'JetBrains Mono',monospace}
 .toggle-switch{width:28px;height:16px;background:var(--border2);border-radius:99px;position:relative;cursor:pointer;transition:background .2s;flex-shrink:0}
 .toggle-switch.on{background:var(--accent)}
@@ -136,7 +137,6 @@ textarea{min-height:80px}
 .modal-body::-webkit-scrollbar-thumb{background:var(--border)}
 .modal-video{width:100%;display:block;background:#000;max-height:55vh;object-fit:contain}
 .modal-fe{padding:14px 18px;border-top:1px solid var(--border)}
-
 .modal-use-btn{width:100%;background:var(--accent);color:#000;border:none;border-radius:var(--r);font-family:'Syne',sans-serif;font-weight:800;font-size:13px;padding:12px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;transition:opacity .2s}
 .modal-use-btn:hover{opacity:.85}
 #modalCanvas{display:none}
@@ -146,6 +146,16 @@ textarea{min-height:80px}
 .toast.success{border-color:rgba(74,222,128,.4)}
 .toast.error{border-color:rgba(248,113,113,.4)}
 @keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+/* Ref image slots */
+.ref-slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:6px}
+.ref-slot{display:flex;flex-direction:column;align-items:center;gap:4px}
+.ref-drop{width:100%;aspect-ratio:1;background:var(--surface2);border:1.5px dashed var(--border2);border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:border-color .2s;position:relative;font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace}
+.ref-drop:hover{border-color:var(--accent)}
+.ref-drop img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0}
+.ref-clear{background:none;border:none;color:var(--text3);cursor:pointer;font-size:9px;font-family:'JetBrains Mono',monospace;padding:0;line-height:1;transition:color .2s}
+.ref-clear:hover{color:var(--red)}
+/* Select group (video type / group) */
+.select-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 *{scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 @media(max-width:700px){
   .app{grid-template-columns:1fr;grid-template-rows:60px auto 1fr}
@@ -171,75 +181,91 @@ textarea{min-height:80px}
   </header>
 
   <aside class="sidebar">
+
+    <!-- ── Model Seçimi ── -->
     <div>
-      <div class="section-label">Kaynak Görsel</div>
-      <div class="drop-zone" id="dropZone">
-        <span class="dz-icon">🖼️</span>
-        <div class="dz-text">Sürükle & Bırak veya Tıkla</div>
-        <div class="dz-sub">JPG, PNG — max 20MB</div>
-        <input type="file" id="imageInput" accept="image/*">
-        <img class="preview-img" id="previewImg" alt="preview">
+      <div class="section-label">Video Türü</div>
+      <select id="videoTypeSelect" onchange="onVideoTypeChange()"></select>
+    </div>
+
+    <div class="select-row">
+      <div>
+        <div class="section-label">Grup</div>
+        <select id="groupSelect" onchange="onGroupChange()"></select>
+      </div>
+      <div>
+        <div class="section-label">Model</div>
+        <select id="modelSelect" onchange="onModelChange()"></select>
       </div>
     </div>
 
-    <div>
-      <div class="section-label">Son Kare <span style="color:var(--text3);font-weight:400">(opsiyonel)</span></div>
-      <div class="drop-zone" id="lastFrameZone">
-        <span class="dz-icon">🎞️</span>
-        <div class="dz-text">Son kare görseli</div>
-        <div class="dz-sub">Boş bırakılabilir</div>
-        <input type="file" id="lastFrameInput" accept="image/*">
-        <img class="preview-img" id="lastFramePreview" alt="last frame preview">
+    <!-- ── Görüntüden Videoya zone'ları ── -->
+    <div id="img2vidSection" style="display:none;flex-direction:column;gap:18px">
+      <div>
+        <div class="section-label">Kaynak Görsel</div>
+        <div class="drop-zone" id="dropZone">
+          <span class="dz-icon">🖼️</span>
+          <div class="dz-text">Sürükle & Bırak veya Tıkla</div>
+          <div class="dz-sub">JPG, PNG — max 20MB</div>
+          <input type="file" id="imageInput" accept="image/*">
+          <img class="preview-img" id="previewImg" alt="preview">
+        </div>
+      </div>
+      <div id="lastFrameSection" style="display:none">
+        <div class="section-label">Son Kare <span style="color:var(--text3);font-weight:400">(opsiyonel)</span></div>
+        <div class="drop-zone" id="lastFrameZone">
+          <span class="dz-icon">🎞️</span>
+          <div class="dz-text">Son kare görseli</div>
+          <div class="dz-sub">Boş bırakılabilir</div>
+          <input type="file" id="lastFrameInput" accept="image/*">
+          <img class="preview-img" id="lastFramePreview" alt="last frame preview">
+        </div>
       </div>
     </div>
 
+    <!-- ── Referans Görsel zone'u ── -->
+    <div id="refImagesSection" style="display:none">
+      <div class="section-label">Referans Görseller</div>
+      <div class="ref-slots" id="refSlotsContainer"></div>
+    </div>
+
+    <!-- ── Prompt ── -->
     <div>
       <div class="section-label">Prompt / Talimat</div>
       <textarea id="instruction" placeholder="Videoda ne olsun? (boş bırakılabilir)"></textarea>
     </div>
 
+    <!-- ── Ratio ── -->
     <div>
       <div class="section-label">Aspect Ratio</div>
-      <div class="pill-group" id="ratioGroup">
-        <button class="pill active" data-val="16:9" onclick="selectPill('ratioGroup',this)">⬛ 16:9</button>
-        <button class="pill" data-val="9:16" onclick="selectPill('ratioGroup',this)">▯ 9:16</button>
-        <button class="pill" data-val="1:1" onclick="selectPill('ratioGroup',this)">□ 1:1</button>
-        <button class="pill" data-val="21:9" onclick="selectPill('ratioGroup',this)">⬜ 21:9</button>
-        <button class="pill" data-val="4:3" onclick="selectPill('ratioGroup',this)">▭ 4:3</button>
-        <button class="pill" data-val="3:4" onclick="selectPill('ratioGroup',this)">▯ 3:4</button>
-      </div>
+      <div class="pill-group" id="ratioGroup"></div>
     </div>
 
+    <!-- ── Resolution ── -->
     <div>
       <div class="section-label">Resolution</div>
-      <div class="pill-group" id="resolutionGroup">
-        <button class="pill" data-val="480p" onclick="selectPill('resolutionGroup',this)">480P</button>
-        <button class="pill active" data-val="720p" onclick="selectPill('resolutionGroup',this)">720P</button>
-        <button class="pill" data-val="1080p" onclick="selectPill('resolutionGroup',this)">1080P</button>
-      </div>
+      <div class="pill-group" id="resolutionGroup"></div>
     </div>
 
+    <!-- ── Duration ── -->
     <div>
       <div class="section-label">Video Length</div>
-      <div class="pill-group" id="durationGroup">
-        <button class="pill" data-val="4" onclick="selectPill('durationGroup',this)">4s</button>
-        <button class="pill" data-val="8" onclick="selectPill('durationGroup',this)">8s</button>
-        <button class="pill active" data-val="12" onclick="selectPill('durationGroup',this)">12s</button>
-      </div>
+      <div class="pill-group" id="durationGroup"></div>
     </div>
 
+    <!-- ── Toggles ── -->
     <div>
       <div class="section-label">Seçenekler</div>
       <div class="toggle-grid">
-        <div class="toggle-item" onclick="toggleOpt('audio')">
+        <div class="toggle-item" id="audioToggleItem" onclick="toggleOpt('audio')" style="display:none">
           <span class="ti-label">Ses Üret</span>
           <div class="toggle-switch on" id="toggle_audio"></div>
         </div>
-        <div class="toggle-item" onclick="toggleOpt('camera')">
+        <div class="toggle-item" id="cameraToggleItem" onclick="toggleOpt('camera')" style="display:none">
           <span class="ti-label">Kamera Sabit</span>
           <div class="toggle-switch" id="toggle_camera"></div>
         </div>
-        <div class="toggle-item" style="grid-column:1/-1" onclick="toggleOpt('invite')">
+        <div class="toggle-item full" onclick="toggleOpt('invite')">
           <span class="ti-label">🎫 Invite Zinciri (5 hesap)</span>
           <div class="toggle-switch" id="toggle_invite"></div>
         </div>
@@ -280,7 +306,7 @@ textarea{min-height:80px}
   </main>
 </div>
 
-<!-- Modal: video + frame extractor -->
+<!-- Modal -->
 <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
   <div class="modal">
     <div class="modal-header">
@@ -304,10 +330,173 @@ textarea{min-height:80px}
 <div class="toasts" id="toasts"></div>
 
 <script>
+// ─── State ────────────────────────────────────────────────────────────────────
 const toggleState = { audio: true, camera: false, invite: false };
 let capturedFrameBlob = null;
-let lastFrameBlob = null;
-let modalVideoUrl = '';
+let lastFrameBlob     = null;
+let modalVideoUrl     = '';
+let currentModelInfo  = null;
+let modelCatalog      = {};
+let videoTypeLabels   = {};
+let refBlobs          = [];
+
+
+// ─── Model Kataloğu ──────────────────────────────────────────────────────────
+
+async function loadModels() {
+  try {
+    const data = await fetch('/api/models').then(r => r.json());
+    modelCatalog    = data.catalog;
+    videoTypeLabels = data.labels;
+
+    const vtSel = document.getElementById('videoTypeSelect');
+    vtSel.innerHTML = '';
+    Object.entries(videoTypeLabels).forEach(([key, label]) => {
+      const opt = document.createElement('option');
+      opt.value = key; opt.textContent = label;
+      if (key === 'img2vid') opt.selected = true;
+      vtSel.appendChild(opt);
+    });
+
+    onVideoTypeChange();
+  } catch(e) {
+    console.error('Model kataloğu yüklenemedi:', e);
+  }
+}
+
+function onVideoTypeChange() {
+  const vt = document.getElementById('videoTypeSelect').value;
+  const groupSel = document.getElementById('groupSelect');
+  groupSel.innerHTML = '';
+  Object.keys(modelCatalog[vt] || {}).forEach(g => {
+    const opt = document.createElement('option'); opt.value = g; opt.textContent = g;
+    groupSel.appendChild(opt);
+  });
+  onGroupChange();
+  updateZoneVisibility();
+}
+
+function onGroupChange() {
+  const vt    = document.getElementById('videoTypeSelect').value;
+  const group = document.getElementById('groupSelect').value;
+  const modelSel = document.getElementById('modelSelect');
+  modelSel.innerHTML = '';
+  (modelCatalog[vt]?.[group] || []).forEach(m => {
+    const opt = document.createElement('option'); opt.value = m.model; opt.textContent = m.name;
+    modelSel.appendChild(opt);
+  });
+  onModelChange();
+}
+
+function onModelChange() {
+  const vt    = document.getElementById('videoTypeSelect').value;
+  const group = document.getElementById('groupSelect').value;
+  const mid   = document.getElementById('modelSelect').value;
+  currentModelInfo = (modelCatalog[vt]?.[group] || []).find(m => m.model === mid) || null;
+  if (!currentModelInfo) return;
+
+  // Pills
+  rebuildPills('ratioGroup',      currentModelInfo.ratios,      getPillVal('ratioGroup'),      v => v);
+  rebuildPills('resolutionGroup', currentModelInfo.resolutions, getPillVal('resolutionGroup'), v => v);
+  rebuildPills('durationGroup',   currentModelInfo.durations,   getPillVal('durationGroup'),   v => v + 's');
+
+  // Ses & Kamera toggleları
+  document.getElementById('audioToggleItem').style.display  = currentModelInfo.audio        ? '' : 'none';
+  document.getElementById('cameraToggleItem').style.display = currentModelInfo.camera_fixed ? '' : 'none';
+
+  // Son Kare zone'u
+  document.getElementById('lastFrameSection').style.display =
+    (vt === 'img2vid' && currentModelInfo.last_frame) ? '' : 'none';
+
+  // Ref slots
+  if (vt === 'ref2vid') buildRefSlots(currentModelInfo.max_ref_images || 3);
+
+  updateZoneVisibility();
+}
+
+function updateZoneVisibility() {
+  const vt = document.getElementById('videoTypeSelect').value;
+  const img2vidSec  = document.getElementById('img2vidSection');
+  const refSec      = document.getElementById('refImagesSection');
+  const lastFrameSec = document.getElementById('lastFrameSection');
+
+  img2vidSec.style.display  = vt === 'img2vid'  ? 'flex' : 'none';
+  refSec.style.display      = vt === 'ref2vid'  ? ''     : 'none';
+
+  if (vt === 'img2vid' && currentModelInfo) {
+    lastFrameSec.style.display = currentModelInfo.last_frame ? '' : 'none';
+  }
+}
+
+function rebuildPills(groupId, values, currentVal, labelFn) {
+  const group = document.getElementById(groupId);
+  group.innerHTML = '';
+  const validVal = values.includes(currentVal) ? currentVal : values[0];
+  values.forEach(v => {
+    const btn = document.createElement('button');
+    btn.className = 'pill' + (v === validVal ? ' active' : '');
+    btn.dataset.val = v;
+    btn.textContent = labelFn(v);
+    btn.onclick = () => selectPill(groupId, btn);
+    group.appendChild(btn);
+  });
+}
+
+
+// ─── Referans Görsel Slotları ─────────────────────────────────────────────────
+
+function buildRefSlots(count) {
+  refBlobs = Array(count).fill(null);
+  const container = document.getElementById('refSlotsContainer');
+  container.innerHTML = '';
+  for (let i = 0; i < count; i++) {
+    const slot = document.createElement('div');
+    slot.className = 'ref-slot';
+    slot.innerHTML = `
+      <div class="ref-drop" id="rDrop-${i}" title="Görsel ${i+1}">
+        <input type="file" id="rInput-${i}" accept="image/*" style="display:none" onchange="setRefImage(${i},this.files[0])">
+        <img id="rImg-${i}" alt="" style="display:none">
+        <span id="rLbl-${i}">${i+1}</span>
+      </div>
+      <button class="ref-clear" id="rClear-${i}" style="display:none" onclick="clearRefImage(${i})">✕</button>
+    `;
+    container.appendChild(slot);
+
+    const drop = slot.querySelector('.ref-drop');
+    drop.addEventListener('click', () => document.getElementById(`rInput-${i}`).click());
+    drop.addEventListener('dragover',  e => { e.preventDefault(); drop.style.borderColor='var(--accent)'; });
+    drop.addEventListener('dragleave', () => { drop.style.borderColor=''; });
+    drop.addEventListener('drop', e => {
+      e.preventDefault(); drop.style.borderColor='';
+      const f = e.dataTransfer.files[0];
+      if (f && f.type.startsWith('image/')) setRefImage(i, f);
+    });
+  }
+}
+
+function setRefImage(idx, file) {
+  refBlobs[idx] = file;
+  const img   = document.getElementById(`rImg-${idx}`);
+  const lbl   = document.getElementById(`rLbl-${idx}`);
+  const clear = document.getElementById(`rClear-${idx}`);
+  const r = new FileReader();
+  r.onload = ev => { img.src = ev.target.result; img.style.display='block'; lbl.style.display='none'; };
+  r.readAsDataURL(file);
+  if (clear) clear.style.display = 'block';
+}
+
+function clearRefImage(idx) {
+  refBlobs[idx] = null;
+  const img   = document.getElementById(`rImg-${idx}`);
+  const lbl   = document.getElementById(`rLbl-${idx}`);
+  const clear = document.getElementById(`rClear-${idx}`);
+  if (img)   { img.src=''; img.style.display='none'; }
+  if (lbl)   lbl.style.display = 'block';
+  if (clear) clear.style.display = 'none';
+}
+
+
+// ─── UI Helpers ───────────────────────────────────────────────────────────────
 
 function selectPill(groupId, btn) {
   document.querySelectorAll(`#${groupId} .pill`).forEach(p => p.classList.remove('active'));
@@ -331,7 +520,9 @@ function toggleOpt(k) {
   document.getElementById(`toggle_${k}`).classList.toggle('on', toggleState[k]);
 }
 
-// Drop zone
+
+// ─── Drop Zone ────────────────────────────────────────────────────────────────
+
 const dropZone   = document.getElementById('dropZone');
 const imageInput = document.getElementById('imageInput');
 const previewImg = document.getElementById('previewImg');
@@ -356,9 +547,8 @@ function setFrameBlob(blob) {
   dropZone.classList.add('has-image');
 }
 
-// Last frame zone
-const lastFrameZone  = document.getElementById('lastFrameZone');
-const lastFrameInput = document.getElementById('lastFrameInput');
+const lastFrameZone    = document.getElementById('lastFrameZone');
+const lastFrameInput   = document.getElementById('lastFrameInput');
 const lastFramePreview = document.getElementById('lastFramePreview');
 lastFrameInput.addEventListener('change', e => { if (e.target.files[0]) setLastFrame(e.target.files[0]); });
 lastFrameZone.addEventListener('dragover',  e => { e.preventDefault(); lastFrameZone.classList.add('drag-over'); });
@@ -375,24 +565,50 @@ function setLastFrame(file) {
   r.readAsDataURL(file);
 }
 
-// Generate
+
+// ─── Generate ─────────────────────────────────────────────────────────────────
+
 async function startGenerate() {
-  const file = capturedFrameBlob
-    ? new File([capturedFrameBlob], 'frame.jpg', {type:'image/jpeg'})
-    : imageInput.files[0];
-  if (!file) { toast('Önce bir görsel seçin!', 'error'); return; }
+  const vt = document.getElementById('videoTypeSelect').value;
+
+  if (vt === 'img2vid') {
+    const file = capturedFrameBlob ? new File([capturedFrameBlob],'frame.jpg',{type:'image/jpeg'}) : imageInput.files[0];
+    if (!file) { toast('Önce bir görsel seçin!', 'error'); return; }
+  } else if (vt === 'ref2vid') {
+    if (!refBlobs.some(b => b !== null)) { toast('En az 1 referans görsel seçin!', 'error'); return; }
+  }
+
   const btn = document.getElementById('generateBtn');
   btn.disabled = true; btn.textContent = '⏳ Başlatılıyor...';
+
   const fd = new FormData();
-  fd.append('image', file);
+  fd.append('video_type',  vt);
+  fd.append('model',       document.getElementById('modelSelect').value);
   fd.append('instruction', document.getElementById('instruction').value);
-  fd.append('ratio',      getPillVal('ratioGroup')      || '16:9');
-  fd.append('resolution', getPillVal('resolutionGroup') || '720p');
-  fd.append('duration',   getPillVal('durationGroup')   || '12');
-  fd.append('generate_audio', toggleState.audio);
-  fd.append('camera_fixed',   toggleState.camera);
-  fd.append('invite_mode',    toggleState.invite);
-  if (lastFrameBlob) fd.append('last_frame', lastFrameBlob instanceof File ? lastFrameBlob : new File([lastFrameBlob], 'last_frame.jpg', {type:'image/jpeg'}));
+  fd.append('ratio',       getPillVal('ratioGroup')      || '16:9');
+  fd.append('resolution',  getPillVal('resolutionGroup') || '720p');
+  fd.append('duration',    getPillVal('durationGroup')   || '8');
+  fd.append('invite_mode', toggleState.invite);
+
+  if (currentModelInfo?.audio)        fd.append('generate_audio', toggleState.audio);
+  if (currentModelInfo?.camera_fixed) fd.append('camera_fixed',   toggleState.camera);
+
+  if (vt === 'img2vid') {
+    const file = capturedFrameBlob ? new File([capturedFrameBlob],'frame.jpg',{type:'image/jpeg'}) : imageInput.files[0];
+    fd.append('image', file);
+    if (lastFrameBlob && currentModelInfo?.last_frame) {
+      const lf = lastFrameBlob instanceof File ? lastFrameBlob : new File([lastFrameBlob],'last_frame.jpg',{type:'image/jpeg'});
+      fd.append('last_frame', lf);
+    }
+  } else if (vt === 'ref2vid') {
+    refBlobs.forEach((blob, i) => {
+      if (blob) {
+        const f = blob instanceof File ? blob : new File([blob],`ref_${i}.jpg`,{type:'image/jpeg'});
+        fd.append('ref_images', f);
+      }
+    });
+  }
+
   try {
     const r = await fetch('/api/generate', {method:'POST', body:fd});
     const d = await r.json();
@@ -402,7 +618,9 @@ async function startGenerate() {
   finally { btn.disabled=false; btn.textContent='⚡ Video Oluştur'; }
 }
 
-// Polling
+
+// ─── Polling ──────────────────────────────────────────────────────────────────
+
 const STAGES = ['mail','code','signup','upload','generating','polling','done'];
 async function pollAll() {
   const [tList, gList] = await Promise.all([
@@ -416,7 +634,6 @@ async function pollAll() {
   b.textContent = running; b.classList.toggle('visible', running>0);
 }
 
-// Tasks
 function renderTasks(list) {
   const grid = document.getElementById('tasksGrid');
   document.getElementById('tasksEmpty').style.display = list.length ? 'none' : 'flex';
@@ -430,8 +647,7 @@ function renderTasks(list) {
 
 function buildTaskCard(task) {
   const div = document.createElement('div');
-  div.id = `tc-${task.id}`;
-  div.className = `card ${task.status}`;
+  div.id = `tc-${task.id}`; div.className = `card ${task.status}`;
   div.innerHTML = `
     <div class="card-media" id="tcm-${task.id}">
       <div class="running-overlay" id="tcrun-${task.id}" style="position:relative;inset:auto;background:transparent;height:100%">
@@ -448,7 +664,7 @@ function buildTaskCard(task) {
         <div class="dot ${task.status}" id="tcdot-${task.id}"></div>
         <span id="tcstat-${task.id}">${task.status}</span>
         <span style="color:var(--border2)">·</span>
-        <span>${task.id}</span>
+        <span>${task.model_name||task.model||''}</span>
       </div>
     </div>
     <div class="card-log" id="tclog-${task.id}"></div>
@@ -462,58 +678,53 @@ function buildTaskCard(task) {
 
 function updateTaskCard(card, task) {
   card.className = `card ${task.status}`;
-  // Done or error: hide spinner overlay
-  const runOv = card.querySelector(`#tcrun-${task.id}`);
+  const runOv   = card.querySelector(`#tcrun-${task.id}`);
   const spinner = card.querySelector(`#tcspinner-${task.id}`);
-  const stgEl = card.querySelector(`#tcstg-${task.id}`);
+  const stgEl   = card.querySelector(`#tcstg-${task.id}`);
   if (stgEl) stgEl.textContent = task.stage||'';
   if (runOv) {
     if (task.status === 'running') {
-      runOv.style.display = 'flex';
-      if (spinner) spinner.style.display = 'block';
+      runOv.style.display='flex';
+      if (spinner) spinner.style.display='block';
     } else {
-      if (spinner) spinner.style.display = 'none';
-      runOv.style.display = task.status === 'done' ? 'none' : 'flex';
+      if (spinner) spinner.style.display='none';
+      runOv.style.display = task.status==='done' ? 'none' : 'flex';
     }
   }
   const dot = card.querySelector(`#tcdot-${task.id}`);
   if (dot) dot.className = `dot ${task.status}`;
   const stat = card.querySelector(`#tcstat-${task.id}`);
   if (stat) stat.textContent = task.status;
-  // Log
   const logEl = card.querySelector(`#tclog-${task.id}`);
   if (logEl && task.log && task.log.length) logEl.textContent = task.log[task.log.length-1];
-  // Progress
   const si = STAGES.indexOf(task.stage);
   STAGES.forEach((s,i) => {
     const sp = card.querySelector(`#cp-${task.id}-${s}`);
     if (!sp) return;
     if (task.status==='error') sp.className = i<=si ? 'cp error' : 'cp';
-    else if (i<si) sp.className='cp done';
+    else if (i<si)  sp.className='cp done';
     else if (i===si) sp.className = task.status==='done' ? 'cp done' : 'cp active';
     else sp.className='cp';
   });
-  // Done: swap to video
   if (task.status==='done' && task.video_url) {
     const mediaEl = card.querySelector(`#tcm-${task.id}`);
     if (mediaEl && !mediaEl.querySelector('video')) {
       const vid = document.createElement('video');
-      vid.src = task.video_url; vid.muted=true; vid.loop=true; vid.playsInline=true;
+      vid.src=task.video_url; vid.muted=true; vid.loop=true; vid.playsInline=true;
       vid.style.cssText='width:100%;height:100%;object-fit:cover;display:block;position:absolute;inset:0';
-      const pov = document.createElement('div'); pov.className='play-overlay';
-      const pi  = document.createElement('div'); pi.className='play-icon';
+      const pov=document.createElement('div'); pov.className='play-overlay';
+      const pi=document.createElement('div');  pi.className='play-icon';
       pov.appendChild(pi);
       mediaEl.style.cssText='position:relative;cursor:pointer';
       pov.onclick = () => openModal(task.id, task.video_url, task.instruction);
       mediaEl.insertBefore(vid, mediaEl.firstChild);
       mediaEl.appendChild(pov);
-      card.addEventListener('mouseenter', ()=>vid.play());
-      card.addEventListener('mouseleave', ()=>{vid.pause();vid.currentTime=0;});
+      card.addEventListener('mouseenter',()=>vid.play());
+      card.addEventListener('mouseleave',()=>{vid.pause();vid.currentTime=0;});
     }
   }
 }
 
-// Gallery
 function renderGallery(items) {
   const grid = document.getElementById('galleryGrid');
   document.getElementById('galleryEmpty').style.display = items.length ? 'none' : 'flex';
@@ -530,7 +741,6 @@ function renderGallery(items) {
 function buildGalleryCard(item) {
   const card = document.createElement('div');
   card.className='card done'; card.dataset.gid=item.id;
-  const esc = (item.instruction||'').replace(/'/g,"\\'");
   card.innerHTML=`
     <div class="card-media">
       <video src="${item.video_url}" muted loop playsinline style="width:100%;height:100%;object-fit:cover;display:block"></video>
@@ -540,7 +750,11 @@ function buildGalleryCard(item) {
       <div class="card-inst">${item.instruction||'(prompt yok)'}</div>
       <div class="card-meta">
         <div class="dot done"></div>
-        <span>${item.ratio}</span><span style="color:var(--border2)">·</span><span>12s · 720p</span>
+        <span>${item.ratio}</span>
+        <span style="color:var(--border2)">·</span>
+        <span>${item.duration}s · ${item.resolution}</span>
+        <span style="color:var(--border2)">·</span>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90px">${item.model_name||''}</span>
       </div>
     </div>
     <div class="card-actions">
@@ -565,15 +779,24 @@ async function delGallery(id, btn) {
   if (!n) document.getElementById('galleryEmpty').style.display='flex';
 }
 
-// Modal
+async function delTask(id, btn) {
+  btn.textContent='...';
+  await fetch(`/api/task/delete/${id}`,{method:'DELETE'});
+  document.getElementById(`tc-${id}`)?.remove();
+  const n = document.querySelectorAll('[id^="tc-"]').length;
+  document.getElementById('tasksCount').textContent=`${n} görev`;
+  if (!n) document.getElementById('tasksEmpty').style.display='flex';
+}
+
+
+// ─── Modal ────────────────────────────────────────────────────────────────────
+
 function openModal(id, videoUrl, instruction) {
   modalVideoUrl = videoUrl;
   const vid = document.getElementById('modalVideo');
   vid.src = videoUrl; vid.load();
   document.getElementById('modalTitle').textContent = instruction||'Frame Seç';
   document.getElementById('modalOverlay').classList.add('visible');
-  vid.addEventListener('loadedmetadata', () => {
-  }, {once:true});
 }
 
 function useModalFrame() {
@@ -583,40 +806,34 @@ function useModalFrame() {
   if (!src) { toast('Video yüklenemedi!', 'error'); return; }
 
   const btn = document.querySelector('.modal-use-btn');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Kare yakalanıyor...'; }
+  if (btn) { btn.disabled=true; btn.textContent='⏳ Kare yakalanıyor...'; }
+  const resetBtn = () => { if (btn) { btn.disabled=false; btn.textContent='⚡ Bu Kareyi Yeni Video için Kullan'; } };
 
-  const resetBtn = () => {
-    if (btn) { btn.disabled = false; btn.textContent = '⚡ Bu Kareyi Yeni Video için Kullan'; }
-  };
-
-  // Fetch video as blob to avoid tainted canvas CORS error
-  fetch(src)
-    .then(r => r.blob())
-    .then(videoBlob => {
-      const blobUrl = URL.createObjectURL(videoBlob);
-      const v = document.createElement('video');
-      v.src = blobUrl; v.muted = true;
-      v.addEventListener('seeked', () => {
-        const canvas = document.getElementById('modalCanvas');
-        canvas.width = v.videoWidth || 1280;
-        canvas.height = v.videoHeight || 720;
-        canvas.getContext('2d').drawImage(v, 0, 0);
-        canvas.toBlob(blob => {
-          URL.revokeObjectURL(blobUrl);
-          resetBtn();
-          if (!blob) { toast('Kare yakalanamadı!', 'error'); return; }
-          setFrameBlob(blob);
-          closeModalDirect();
-          toast('✅ Kare sol panele aktarıldı!', 'success');
-        }, 'image/jpeg', 0.93);
-      }, {once: true});
-      v.addEventListener('loadedmetadata', () => { v.currentTime = currentTime; }, {once: true});
-      v.load();
-    })
-    .catch(err => {
-      resetBtn();
-      toast('Kare alınamadı: ' + err.message, 'error');
-    });
+  fetch(src).then(r=>r.blob()).then(videoBlob => {
+    const blobUrl = URL.createObjectURL(videoBlob);
+    const v = document.createElement('video');
+    v.src = blobUrl; v.muted = true;
+    v.addEventListener('seeked', () => {
+      const canvas = document.getElementById('modalCanvas');
+      canvas.width = v.videoWidth||1280; canvas.height = v.videoHeight||720;
+      canvas.getContext('2d').drawImage(v,0,0);
+      canvas.toBlob(blob => {
+        URL.revokeObjectURL(blobUrl); resetBtn();
+        if (!blob) { toast('Kare yakalanamadı!', 'error'); return; }
+        setFrameBlob(blob);
+        closeModalDirect();
+        // img2vid'e geç
+        const vtSel = document.getElementById('videoTypeSelect');
+        if (vtSel.value !== 'img2vid') {
+          vtSel.value = 'img2vid';
+          onVideoTypeChange();
+        }
+        toast('✅ Kare sol panele aktarıldı!', 'success');
+      }, 'image/jpeg', 0.93);
+    }, {once:true});
+    v.addEventListener('loadedmetadata', () => { v.currentTime = currentTime; }, {once:true});
+    v.load();
+  }).catch(err => { resetBtn(); toast('Kare alınamadı: '+err.message, 'error'); });
 }
 
 function closeModal(e) { if (e.target===document.getElementById('modalOverlay')) closeModalDirect(); }
@@ -628,25 +845,17 @@ function closeModalDirect() {
 function dlVideo(url) {
   const a=document.createElement('a'); a.href=url; a.download='wayin_video.mp4'; a.target='_blank'; a.click();
 }
-function fmt(s) {
-  if (!s||isNaN(s)) return '0:00';
-  return `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,'0')}`;
-}
+
 function toast(msg, type='success') {
   const el=document.createElement('div'); el.className=`toast ${type}`; el.textContent=msg;
   document.getElementById('toasts').appendChild(el);
   setTimeout(()=>el.remove(),4000);
 }
 
-async function delTask(id, btn) {
-  btn.textContent='...';
-  await fetch(`/api/task/delete/${id}`,{method:'DELETE'});
-  document.getElementById(`tc-${id}`)?.remove();
-  const n = document.querySelectorAll('[id^="tc-"]').length;
-  document.getElementById('tasksCount').textContent=`${n} görev`;
-  if (!n) document.getElementById('tasksEmpty').style.display='flex';
-}
 
+// ─── Init ─────────────────────────────────────────────────────────────────────
+
+loadModels();
 pollAll();
 setInterval(pollAll, 3000);
 </script>
