@@ -194,6 +194,10 @@ def generate_ticket(reason, email, timestamp):
     md5_hex = hashlib.md5(raw.encode("utf-8")).hexdigest()
     return base64.b64encode(md5_hex.encode("utf-8")).decode("utf-8")
 
+def random_username(length=12):
+    chars = string.ascii_lowercase + string.digits
+    return "".join(random.choices(chars, k=length))
+
 def get_file_upload_params(file_path):
     ext = os.path.splitext(file_path.lower())[1]
     if ext in [".mp4", ".mov", ".avi", ".webm", ".mkv"]:
