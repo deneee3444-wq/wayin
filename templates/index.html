@@ -784,6 +784,8 @@ function buildTaskCard(task) {
       <div class="card-meta">
         <div class="dot ${task.status}" id="tcdot-${task.id}"></div>
         <span id="tcstat-${task.id}">${task.status}</span>
+        <span style="color:var(--border2);display:none" id="tcemdot-${task.id}">·</span>
+        <span id="tcemail-${task.id}" style="color:var(--accent);display:none;font-family:'JetBrains Mono',monospace;font-size:10px"></span>
         <span style="color:var(--border2)">·</span>
         <span>${task.model_name||task.model||''}</span>
       </div>
@@ -816,6 +818,19 @@ function updateTaskCard(card, task) {
   if (dot) dot.className = `dot ${task.status}`;
   const stat = card.querySelector(`#tcstat-${task.id}`);
   if (stat) stat.textContent = task.status;
+  const emEl  = card.querySelector(`#tcemail-${task.id}`);
+  const emDot = card.querySelector(`#tcemdot-${task.id}`);
+  if (emEl) {
+    if (task.email) {
+      emEl.textContent = task.email;
+      emEl.style.display = 'inline';
+      if (emDot) emDot.style.display = 'inline';
+    } else {
+      emEl.textContent = '';
+      emEl.style.display = 'none';
+      if (emDot) emDot.style.display = 'none';
+    }
+  }
   const logEl = card.querySelector(`#tclog-${task.id}`);
   if (logEl && task.log && task.log.length) logEl.textContent = task.log[task.log.length-1];
   const si = STAGES.indexOf(task.stage);
