@@ -347,7 +347,7 @@ def register_one_account(password, invitation_code=None):
 
 
 def run_video_job(job_id, instruction, model, model_config_base, auto_prompt, password,
-                  video_type="img2vid", invite_mode=False,
+                  video_type="img2vid", invite_mode=False, invite_count=5,
                   image_path=None, last_frame_path=None, reference_paths=None,
                   video_path=None, audio_path=None):
     def update(stage, msg, extra=None):
@@ -370,7 +370,7 @@ def run_video_job(job_id, instruction, model, model_config_base, auto_prompt, pa
                 raise ValueError("Invite kodu alınamadı!")
             update("signup", f"🎫 Invite kodu: {invitation_code}", {"invitation_code": invitation_code})
 
-            INVITE_COUNT = 5
+            INVITE_COUNT = invite_count
             for i in range(1, INVITE_COUNT + 1):
                 update("signup", f"👥 Alt hesap {i}/{INVITE_COUNT} açılıyor...")
                 try:
@@ -565,6 +565,13 @@ def api_generate():
     duration    = request.form.get("duration", "12")
     resolution  = request.form.get("resolution", "720p")
     invite_mode = request.form.get("invite_mode", "false") == "true"
+    try:
+        invite_count = int(request.form.get("invite_count", "5"))
+        if invite_count < 1:
+            invite_count = 5
+    except ValueError:
+        invite_count = 5
+
     auto_prompt = False
     password    = "Windows700@"
 
@@ -647,6 +654,7 @@ def api_generate():
         kwargs={
             "video_type":       video_type,
             "invite_mode":      invite_mode,
+            "invite_count":     invite_count,
             "image_path":       image_path,
             "last_frame_path":  last_frame_path,
             "reference_paths":  reference_paths,
