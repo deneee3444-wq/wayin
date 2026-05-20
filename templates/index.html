@@ -292,9 +292,13 @@ textarea{min-height:80px}
           <div class="toggle-switch" id="toggle_camera"></div>
         </div>
         <div class="toggle-item full" onclick="toggleOpt('invite')">
-          <span class="ti-label">🎫 Invite Zinciri (5 hesap)</span>
+          <span class="ti-label">🎫 Invite Zinciri</span>
           <div class="toggle-switch" id="toggle_invite"></div>
         </div>
+      </div>
+      <div id="inviteCountSection" style="display:none;margin-top:10px">
+        <div class="section-label" style="margin-bottom:6px">Davet Sayısı (Hesap)</div>
+        <input type="number" id="inviteCountInput" min="1" max="50" value="5" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:8px 12px;width:100%;outline:none;transition:border-color .2s" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
       </div>
     </div>
 
@@ -556,6 +560,9 @@ function switchTab(tab) {
 function toggleOpt(k) {
   toggleState[k] = !toggleState[k];
   document.getElementById(`toggle_${k}`).classList.toggle('on', toggleState[k]);
+  if (k === 'invite') {
+    document.getElementById('inviteCountSection').style.display = toggleState.invite ? 'block' : 'none';
+  }
 }
 
 
@@ -687,6 +694,9 @@ async function startGenerate() {
   fd.append('resolution',  getPillVal('resolutionGroup') || '720p');
   fd.append('duration',    getPillVal('durationGroup')   || '8');
   fd.append('invite_mode', toggleState.invite);
+  if (toggleState.invite) {
+    fd.append('invite_count', document.getElementById('inviteCountInput').value || '5');
+  }
 
   if (currentModelInfo?.audio)        fd.append('generate_audio', toggleState.audio);
   if (currentModelInfo?.camera_fixed) fd.append('camera_fixed',   toggleState.camera);
