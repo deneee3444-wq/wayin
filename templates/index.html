@@ -42,6 +42,8 @@ header{grid-column:1/-1;display:flex;align-items:center;gap:16px;padding:0 24px;
 .preview-img{width:100%;border-radius:6px;display:none}
 .drop-zone.has-image .dz-icon,.drop-zone.has-image .dz-text,.drop-zone.has-image .dz-sub{display:none}
 .drop-zone.has-image .preview-img{display:block}
+.drop-zone.has-file .dz-icon,.drop-zone.has-file .dz-text,.drop-zone.has-file .dz-sub{display:none}
+.drop-zone.has-file .preview-text{display:block !important;padding:8px 0}
 /* Inputs */
 textarea,select{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:10px 12px;width:100%;outline:none;transition:border-color .2s;resize:none}
 textarea:focus,select:focus{border-color:var(--accent)}
@@ -229,6 +231,30 @@ textarea{min-height:80px}
       <div class="ref-slots" id="refSlotsContainer"></div>
     </div>
 
+    <!-- ── Referans Video zone'u ── -->
+    <div id="refVideoSection" style="display:none">
+      <div class="section-label">Referans Video <span style="color:var(--text3);font-weight:400">(opsiyonel)</span></div>
+      <div class="drop-zone" id="refVideoZone">
+        <span class="dz-icon">📹</span>
+        <div class="dz-text">Referans video seçin</div>
+        <div class="dz-sub">Boş bırakılabilir</div>
+        <input type="file" id="refVideoInput" accept="video/*">
+        <div class="preview-text" id="refVideoPreviewText" style="display:none;font-size:12px;color:var(--accent);font-family:'JetBrains Mono',monospace"></div>
+      </div>
+    </div>
+
+    <!-- ── Referans Ses zone'u ── -->
+    <div id="refAudioSection" style="display:none">
+      <div class="section-label">Referans Ses <span style="color:var(--text3);font-weight:400">(opsiyonel)</span></div>
+      <div class="drop-zone" id="refAudioZone">
+        <span class="dz-icon">🎵</span>
+        <div class="dz-text">Referans ses seçin</div>
+        <div class="dz-sub">Boş bırakılabilir</div>
+        <input type="file" id="refAudioInput" accept="audio/*">
+        <div class="preview-text" id="refAudioPreviewText" style="display:none;font-size:12px;color:var(--accent);font-family:'JetBrains Mono',monospace"></div>
+      </div>
+    </div>
+
     <!-- ── Prompt ── -->
     <div>
       <div class="section-label">Prompt / Talimat</div>
@@ -339,6 +365,8 @@ let currentModelInfo  = null;
 let modelCatalog      = {};
 let videoTypeLabels   = {};
 let refBlobs          = [];
+let refVideoFile      = null;
+let refAudioFile      = null;
 
 
 // ─── Model Kataloğu ──────────────────────────────────────────────────────────
@@ -409,7 +437,7 @@ function onModelChange() {
     (vt === 'img2vid' && currentModelInfo.last_frame) ? '' : 'none';
 
   // Ref slots
-  if (vt === 'ref2vid') buildRefSlots(currentModelInfo.max_ref_images || 3);
+  if (vt === 'ref2vid' || vt === 'omni') buildRefSlots(currentModelInfo.max_ref_images || 1);
 
   updateZoneVisibility();
 }
@@ -419,12 +447,22 @@ function updateZoneVisibility() {
   const img2vidSec  = document.getElementById('img2vidSection');
   const refSec      = document.getElementById('refImagesSection');
   const lastFrameSec = document.getElementById('lastFrameSection');
+  const refVideoSec = document.getElementById('refVideoSection');
+  const refAudioSec = document.getElementById('refAudioSection');
 
   img2vidSec.style.display  = vt === 'img2vid'  ? 'flex' : 'none';
-  refSec.style.display      = vt === 'ref2vid'  ? ''     : 'none';
+  refSec.style.display      = (vt === 'ref2vid' || vt === 'omni') ? '' : 'none';
 
   if (vt === 'img2vid' && currentModelInfo) {
     lastFrameSec.style.display = currentModelInfo.last_frame ? '' : 'none';
+  }
+
+  if (vt === 'omni' && currentModelInfo) {
+    refVideoSec.style.display = currentModelInfo.has_video ? '' : 'none';
+    refAudioSec.style.display = '';
+  } else {
+    refVideoSec.style.display = 'none';
+    refAudioSec.style.display = 'none';
   }
 }
 
@@ -565,6 +603,66 @@ function setLastFrame(file) {
   r.readAsDataURL(file);
 }
 
+// ─── Reference Video & Audio Drag & Drop ──────────────────────────────────────
+
+const refVideoZone = document.getElementById('refVideoZone');
+const refVideoInput = document.getElementById('refVideoInput');
+const refVideoPreviewText = document.getElementById('refVideoPreviewText');
+
+if (refVideoInput) {
+  refVideoInput.addEventListener('change', e => { if (e.target.files[0]) setRefVideo(e.target.files[0]); });
+}
+if (refVideoZone) {
+  refVideoZone.addEventListener('dragover',  e => { e.preventDefault(); refVideoZone.classList.add('drag-over'); });
+  refVideoZone.addEventListener('dragleave', () => refVideoZone.classList.remove('drag-over'));
+  refVideoZone.addEventListener('drop', e => {
+    e.preventDefault(); refVideoZone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('video/')) setRefVideo(f);
+  });
+}
+
+function setRefVideo(file) {
+  refVideoFile = file;
+  refVideoPreviewText.textContent = `🎥 ${file.name} (${(file.size/1024/1024).toFixed(2)} MB)`;
+  refVideoZone.classList.add('has-file');
+}
+
+const refAudioZone = document.getElementById('refAudioZone');
+const refAudioInput = document.getElementById('refAudioInput');
+const refAudioPreviewText = document.getElementById('refAudioPreviewText');
+
+if (refAudioInput) {
+  refAudioInput.addEventListener('change', e => { if (e.target.files[0]) setRefAudio(e.target.files[0]); });
+}
+if (refAudioZone) {
+  refAudioZone.addEventListener('dragover',  e => { e.preventDefault(); refAudioZone.classList.add('drag-over'); });
+  refAudioZone.addEventListener('dragleave', () => refAudioZone.classList.remove('drag-over'));
+  refAudioZone.addEventListener('drop', e => {
+    e.preventDefault(); refAudioZone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('audio/')) setRefAudio(f);
+  });
+}
+
+function setRefAudio(file) {
+  refAudioFile = file;
+  refAudioPreviewText.textContent = `🎵 ${file.name} (${(file.size/1024/1024).toFixed(2)} MB)`;
+  refAudioZone.classList.add('has-file');
+}
+
+function resetRefMedia() {
+  refVideoFile = null;
+  if (refVideoInput) refVideoInput.value = '';
+  if (refVideoPreviewText) refVideoPreviewText.textContent = '';
+  if (refVideoZone) refVideoZone.classList.remove('has-file');
+
+  refAudioFile = null;
+  if (refAudioInput) refAudioInput.value = '';
+  if (refAudioPreviewText) refAudioPreviewText.textContent = '';
+  if (refAudioZone) refAudioZone.classList.remove('has-file');
+}
+
 
 // ─── Generate ─────────────────────────────────────────────────────────────────
 
@@ -574,7 +672,7 @@ async function startGenerate() {
   if (vt === 'img2vid') {
     const file = capturedFrameBlob ? new File([capturedFrameBlob],'frame.jpg',{type:'image/jpeg'}) : imageInput.files[0];
     if (!file) { toast('Önce bir görsel seçin!', 'error'); return; }
-  } else if (vt === 'ref2vid') {
+  } else if (vt === 'ref2vid' || vt === 'omni') {
     if (!refBlobs.some(b => b !== null)) { toast('En az 1 referans görsel seçin!', 'error'); return; }
   }
 
@@ -600,19 +698,32 @@ async function startGenerate() {
       const lf = lastFrameBlob instanceof File ? lastFrameBlob : new File([lastFrameBlob],'last_frame.jpg',{type:'image/jpeg'});
       fd.append('last_frame', lf);
     }
-  } else if (vt === 'ref2vid') {
+  } else if (vt === 'ref2vid' || vt === 'omni') {
     refBlobs.forEach((blob, i) => {
       if (blob) {
         const f = blob instanceof File ? blob : new File([blob],`ref_${i}.jpg`,{type:'image/jpeg'});
         fd.append('ref_images', f);
       }
     });
+
+    if (vt === 'omni') {
+      if (refVideoFile) {
+        fd.append('ref_video', refVideoFile);
+      }
+      if (refAudioFile) {
+        fd.append('ref_audio', refAudioFile);
+      }
+    }
   }
 
   try {
     const r = await fetch('/api/generate', {method:'POST', body:fd});
     const d = await r.json();
-    if (d.job_id) { toast('🚀 Görev başlatıldı!', 'success'); switchTab('tasks'); }
+    if (d.job_id) {
+      toast('🚀 Görev başlatıldı!', 'success');
+      switchTab('tasks');
+      resetRefMedia();
+    }
     else toast(`Hata: ${d.error}`, 'error');
   } catch(e) { toast(`Hata: ${e.message}`, 'error'); }
   finally { btn.disabled=false; btn.textContent='⚡ Video Oluştur'; }
