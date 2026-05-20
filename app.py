@@ -645,6 +645,7 @@ def api_generate():
             "model_name":  m_info["name"] if m_info else model,
             "video_type":  video_type,
             "video_url":   None,
+            "email":       None,
             "created_at":  int(time.time()),
         }
 
