@@ -17,6 +17,7 @@ VIDEO_TYPE_LABELS = {
     "txt2vid": "Metinden Videoya",
     "img2vid": "Görüntüden Videoya",
     "ref2vid": "Referans Görselden Videoya",
+    "omni": "Omni Referans",
 }
 
 MODEL_CATALOG = {
@@ -30,9 +31,14 @@ MODEL_CATALOG = {
             {"name": "Veo 2.0",       "model": "veo-2.0-generate-001",       "ratios": ["16:9","9:16"], "resolutions": ["720p"],         "durations": ["5","6","7","8"], "audio": False, "camera_fixed": False},
         ],
         "ByteDance": [
+            {"name": "Seedance 2.0 Fast", "model": "dreamina-seedance-2-0-fast-260128", "ratios": ["16:9","9:16","1:1","21:9","4:3","3:4"], "resolutions": ["480p","720p"], "durations": ["4","5","6","7","8","9","10","12","15"], "audio": True, "camera_fixed": False},
+            {"name": "Seedance 2.0",      "model": "dreamina-seedance-2-0-260128",      "ratios": ["16:9","9:16","1:1","21:9","4:3","3:4"], "resolutions": ["480p","720p"], "durations": ["4","5","6","7","8","9","10","12","15"], "audio": True, "camera_fixed": False},
             {"name": "Seedance 1.5 Pro", "model": "bytedance/seedance-1.5-pro",      "ratios": ["16:9","9:16","1:1","21:9","4:3","3:4"], "resolutions": ["480p","720p","1080p"], "durations": ["4","8","12"], "audio": True,  "camera_fixed": False},
             {"name": "Seedance 1.0 Pro", "model": "bytedance/v1-pro-text-to-video",  "ratios": ["16:9","9:16","1:1","21:9","4:3","3:4"], "resolutions": ["480p","720p","1080p"], "durations": ["5","10"],     "audio": False, "camera_fixed": True},
             {"name": "Seedance 1.0 Lite","model": "bytedance/v1-lite-text-to-video", "ratios": ["16:9","9:16","1:1","4:3","3:4"],         "resolutions": ["480p","720p","1080p"], "durations": ["5","10"],     "audio": False, "camera_fixed": True},
+        ],
+        "HappyHorse": [
+            {"name": "HappyHorse 1.0",    "model": "happyhorse-1.0-t2v",                "ratios": ["16:9","9:16","1:1","4:3","3:4"], "resolutions": ["720p","1080p"], "durations": ["3","4","5","6","7","8","9","10","12","15"], "audio": False, "camera_fixed": False},
         ],
         "OpenAI": [
             {"name": "Sora 2", "model": "sora-2", "ratios": ["16:9","9:16"], "resolutions": ["720p"], "durations": ["4","8","12"], "audio": False, "camera_fixed": False},
@@ -60,10 +66,15 @@ MODEL_CATALOG = {
             {"name": "Veo 2.0",      "model": "veo-2.0-generate-001",       "ratios": ["16:9","9:16"], "resolutions": ["720p"],         "durations": ["5","6","7","8"], "audio": False, "camera_fixed": False, "last_frame": False},
         ],
         "ByteDance": [
+            {"name": "Seedance 2.0 Fast", "model": "dreamina-seedance-2-0-fast-260128", "ratios": ["16:9","9:16","1:1","21:9","4:3","3:4"], "resolutions": ["480p","720p"], "durations": ["4","5","6","7","8","9","10","12","15"], "audio": True, "camera_fixed": False, "last_frame": True},
+            {"name": "Seedance 2.0",      "model": "dreamina-seedance-2-0-260128",      "ratios": ["16:9","9:16","1:1","21:9","4:3","3:4"], "resolutions": ["480p","720p"], "durations": ["4","5","6","7","8","9","10","12","15"], "audio": True, "camera_fixed": False, "last_frame": True},
             {"name": "Seedance 1.5 Pro",     "model": "bytedance/seedance-1.5-pro",           "ratios": ["16:9","9:16","1:1","21:9","4:3","3:4"], "resolutions": ["480p","720p","1080p"], "durations": ["4","8","12"], "audio": True,  "camera_fixed": False, "last_frame": True},
             {"name": "Seedance 1.0 Pro",     "model": "bytedance/v1-pro-image-to-video",      "ratios": ["16:9","9:16","1:1","21:9","4:3","3:4"], "resolutions": ["480p","720p","1080p"], "durations": ["5","10"],     "audio": False, "camera_fixed": True,  "last_frame": False},
             {"name": "Seedance 1.0 Lite",    "model": "bytedance/v1-lite-image-to-video",     "ratios": ["16:9","9:16","1:1","4:3","3:4"],         "resolutions": ["480p","720p","1080p"], "durations": ["5","10"],     "audio": False, "camera_fixed": True,  "last_frame": True},
             {"name": "Seedance 1.0 Pro Fast","model": "bytedance/v1-pro-fast-image-to-video", "ratios": ["16:9","9:16","1:1","4:3","3:4"],         "resolutions": ["720p","1080p"],         "durations": ["5","10"],     "audio": False, "camera_fixed": False, "last_frame": False},
+        ],
+        "HappyHorse": [
+            {"name": "HappyHorse 1.0",    "model": "happyhorse-1.0-i2v",                "ratios": ["16:9","9:16","1:1","4:3","3:4"], "resolutions": ["720p","1080p"], "durations": ["3","4","5","6","7","8","9","10","12","15"], "audio": False, "camera_fixed": False, "last_frame": False},
         ],
         "OpenAI": [
             {"name": "Sora 2", "model": "sora-2", "ratios": ["16:9","9:16"], "resolutions": ["720p"], "durations": ["4","8","12"], "audio": False, "camera_fixed": False, "last_frame": False},
@@ -89,9 +100,26 @@ MODEL_CATALOG = {
         "Google": [
             {"name": "Veo 3.1", "model": "veo-3.1-generate-001", "ratios": ["16:9"], "resolutions": ["720p","1080p"], "durations": ["4","6","8"], "audio": True,  "camera_fixed": False, "max_ref_images": 3},
         ],
+        "ByteDance": [
+            {"name": "Seedance 2.0 Fast", "model": "dreamina-seedance-2-0-fast-260128", "ratios": ["16:9","9:16","1:1","21:9","4:3","3:4"], "resolutions": ["480p","720p"], "durations": ["4","5","6","7","8","9","10","12","15"], "audio": True, "camera_fixed": False, "max_ref_images": 3},
+            {"name": "Seedance 2.0",      "model": "dreamina-seedance-2-0-260128",      "ratios": ["16:9","9:16","1:1","21:9","4:3","3:4"], "resolutions": ["480p","720p"], "durations": ["4","5","6","7","8","9","10","12","15"], "audio": True, "camera_fixed": False, "max_ref_images": 3},
+        ],
+        "HappyHorse": [
+            {"name": "HappyHorse 1.0",    "model": "happyhorse-1.0-r2v",                "ratios": ["16:9","9:16","1:1","4:3","3:4"], "resolutions": ["720p","1080p"], "durations": ["3","4","5","6","7","8","9","10","12","15"], "audio": False, "camera_fixed": False, "max_ref_images": 1},
+        ],
         "Kling": [
             {"name": "Kling 3.0 Omni", "model": "kling-v3-omni",  "ratios": ["16:9","9:16","1:1"], "resolutions": ["720p","1080p"], "durations": ["3","4","5","6","7","8","9","10","12","15"], "audio": True,  "camera_fixed": False, "max_ref_images": 5},
             {"name": "Kling O1",        "model": "kling-video-o1", "ratios": ["16:9","9:16","1:1"], "resolutions": ["720p","1080p"], "durations": ["3","4","5","6","7","8","9","10"],           "audio": False, "camera_fixed": False, "max_ref_images": 5},
+        ],
+    },
+    "omni": {
+        "ByteDance": [
+            {"name": "Seedance 2.0 Fast", "model": "dreamina-seedance-2-0-fast-260128", "ratios": ["16:9","9:16","1:1","21:9","4:3","3:4"], "resolutions": ["480p","720p"], "durations": ["4","5","6","7","8","9","10","12","15"], "audio": True, "camera_fixed": False, "max_ref_images": 3, "has_video": True},
+            {"name": "Seedance 2.0",      "model": "dreamina-seedance-2-0-260128",      "ratios": ["16:9","9:16","1:1","21:9","4:3","3:4"], "resolutions": ["480p","720p"], "durations": ["4","5","6","7","8","9","10","12","15"], "audio": True, "camera_fixed": False, "max_ref_images": 3, "has_video": True},
+        ],
+        "Kling": [
+            {"name": "Kling 3.0 Omni",     "model": "kling-v3-omni",                     "ratios": ["16:9","9:16","1:1"], "resolutions": ["720p","1080p"], "durations": ["3","4","5","6","7","8","9","10","12","15"], "audio": True, "camera_fixed": False, "max_ref_images": 1},
+            {"name": "Kling O1",           "model": "kling-video-o1",                    "ratios": ["16:9","9:16","1:1"], "resolutions": ["720p","1080p"], "durations": ["3","4","5","6","7","8","9","10"],           "audio": False, "camera_fixed": False, "max_ref_images": 1},
         ],
     },
 }
@@ -166,9 +194,14 @@ def generate_ticket(reason, email, timestamp):
     md5_hex = hashlib.md5(raw.encode("utf-8")).hexdigest()
     return base64.b64encode(md5_hex.encode("utf-8")).decode("utf-8")
 
-def random_username(length=12):
-    chars = string.ascii_lowercase + string.digits
-    return "".join(random.choices(chars, k=length))
+def get_file_upload_params(file_path):
+    ext = os.path.splitext(file_path.lower())[1]
+    if ext in [".mp4", ".mov", ".avi", ".webm", ".mkv"]:
+        return "AI_VIDEO_VIDEO", "video/mp4"
+    elif ext in [".mp3", ".wav", ".m4a", ".ogg", ".aac"]:
+        return "AI_VIDEO_AUDIO", "audio/mpeg"
+    else:
+        return "AI_VIDEO_IMAGE", "image/jpeg"
 
 
 class WayinClient:
@@ -221,13 +254,13 @@ class WayinClient:
         resp.raise_for_status()
         return resp.json()["data"]
 
-    def upload_image(self, image_path):
+    def upload_image(self, image_path, resource_type="AI_VIDEO_IMAGE", content_type="image/jpeg"):
         filename = os.path.basename(image_path)
         filesize = os.path.getsize(image_path)
         self.session.headers.update({"referer": "https://wayin.ai/wayinvideo/ai-video"})
         resp = self.session.post(
             f"{self.BASE_URL}/api/video/generate/upload",
-            json={"name": filename, "size": filesize, "resource_type": "AI_VIDEO_IMAGE"}
+            json={"name": filename, "size": filesize, "resource_type": resource_type}
         )
         resp.raise_for_status()
         data = resp.json()["data"]
@@ -237,10 +270,9 @@ class WayinClient:
 
         with open(image_path, "rb") as f:
             put_resp = requests.put(
-                upload_url,
-                data=f,
+                upload_url, data=f,
                 headers={
-                    "content-type": "image/jpeg",
+                    "content-type": content_type,
                     "origin": "https://wayin.ai",
                     "referer": "https://wayin.ai/wayinvideo/ai-video",
                     "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
@@ -312,7 +344,8 @@ def register_one_account(password, invitation_code=None):
 
 def run_video_job(job_id, instruction, model, model_config_base, auto_prompt, password,
                   video_type="img2vid", invite_mode=False,
-                  image_path=None, last_frame_path=None, reference_paths=None):
+                  image_path=None, last_frame_path=None, reference_paths=None,
+                  video_path=None, audio_path=None):
     def update(stage, msg, extra=None):
         with tasks_lock:
             tasks[job_id]["stage"] = stage
@@ -363,6 +396,17 @@ def run_video_job(job_id, instruction, model, model_config_base, auto_prompt, pa
         # ── Görselleri yükle ve model_config oluştur ──
         model_config = dict(model_config_base)
 
+        # ─── input_type dynamic injection ─────────────────────────────────────
+        if "seedance" in model or "happyhorse" in model or "kling-v3-omni" in model or model == "kling-video-o1":
+            if video_type == "txt2vid":
+                model_config["input_type"] = "t2v"
+            elif video_type == "img2vid":
+                model_config["input_type"] = "i2v"
+            elif video_type == "ref2vid":
+                model_config["input_type"] = "r2v"
+            elif video_type == "omni":
+                model_config["input_type"] = "omni_r2v"
+
         if video_type == "img2vid" and image_path:
             update("upload", "⬆️ Resim yükleniyor...")
             img_result = wayin.upload_image(image_path)
@@ -376,6 +420,8 @@ def run_video_job(job_id, instruction, model, model_config_base, auto_prompt, pa
                 try: os.unlink(last_frame_path)
                 except: pass
                 model_config["lastFrame"] = lf_result["signed_url"]
+            elif "seedance" in model:
+                model_config["lastFrame"] = ""
 
         elif video_type == "ref2vid" and reference_paths:
             ref_urls = []
@@ -385,7 +431,55 @@ def run_video_job(job_id, instruction, model, model_config_base, auto_prompt, pa
                 try: os.unlink(path)
                 except: pass
                 ref_urls.append(r["signed_url"])
+
+            if "seedance" in model:
+                while len(ref_urls) < 3:
+                    ref_urls.append("")
+            elif "happyhorse" in model:
+                while len(ref_urls) < 1:
+                    ref_urls.append("")
+
             model_config["reference_images"] = ref_urls
+
+        elif video_type == "omni" and reference_paths:
+            # 1. Reference images
+            ref_urls = []
+            for i, path in enumerate(reference_paths, 1):
+                update("upload", f"⬆️ Referans görsel {i}/{len(reference_paths)} yükleniyor...")
+                r = wayin.upload_image(path)
+                try: os.unlink(path)
+                except: pass
+                ref_urls.append(r["signed_url"])
+
+            if "seedance" in model:
+                while len(ref_urls) < 3:
+                    ref_urls.append("")
+            elif "kling" in model:
+                while len(ref_urls) < 1:
+                    ref_urls.append("")
+
+            model_config["reference_images"] = ref_urls
+
+            # 2. Reference video if provided
+            if video_path and os.path.exists(video_path):
+                update("upload", "⬆️ Referans video yükleniyor...")
+                rt, ct = get_file_upload_params(video_path)
+                v_result = wayin.upload_image(video_path, resource_type=rt, content_type=ct)
+                try: os.unlink(video_path)
+                except: pass
+                if "seedance" in model:
+                    model_config["reference_videos"] = [v_result["signed_url"]]
+            else:
+                if "seedance" in model:
+                    model_config["reference_videos"] = [""]
+
+            # 3. Reference audio if provided (Uploaded to server but not added to model_config)
+            if audio_path and os.path.exists(audio_path):
+                update("upload", "⬆️ Referans ses yükleniyor...")
+                rt, ct = get_file_upload_params(audio_path)
+                wayin.upload_image(audio_path, resource_type=rt, content_type=ct)
+                try: os.unlink(audio_path)
+                except: pass
 
         # ── Video oluştur ──
         update("generating", "🎬 Video oluşturuluyor...")
@@ -483,6 +577,8 @@ def api_generate():
     image_path      = None
     last_frame_path = None
     reference_paths = []
+    video_path      = None
+    audio_path      = None
 
     if video_type == "img2vid":
         if "image" not in request.files or not request.files["image"].filename:
@@ -500,7 +596,7 @@ def api_generate():
             lf.save(lf_tmp.name); lf_tmp.close()
             last_frame_path = lf_tmp.name
 
-    elif video_type == "ref2vid":
+    elif video_type in ("ref2vid", "omni"):
         ref_files = request.files.getlist("ref_images")
         if not any(rf.filename for rf in ref_files):
             return jsonify({"error": "En az 1 referans görsel gerekli"}), 400
@@ -510,6 +606,21 @@ def api_generate():
                 tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
                 rf.save(tmp.name); tmp.close()
                 reference_paths.append(tmp.name)
+
+        if video_type == "omni":
+            if "ref_video" in request.files and request.files["ref_video"].filename:
+                vf     = request.files["ref_video"]
+                vf_ext = os.path.splitext(vf.filename)[1] or ".mp4"
+                vf_tmp = tempfile.NamedTemporaryFile(suffix=vf_ext, delete=False)
+                vf.save(vf_tmp.name); vf_tmp.close()
+                video_path = vf_tmp.name
+
+            if "ref_audio" in request.files and request.files["ref_audio"].filename:
+                af     = request.files["ref_audio"]
+                af_ext = os.path.splitext(af.filename)[1] or ".mp3"
+                af_tmp = tempfile.NamedTemporaryFile(suffix=af_ext, delete=False)
+                af.save(af_tmp.name); af_tmp.close()
+                audio_path = af_tmp.name
 
     job_id = uuid.uuid4().hex[:12]
     with tasks_lock:
@@ -535,6 +646,8 @@ def api_generate():
             "image_path":       image_path,
             "last_frame_path":  last_frame_path,
             "reference_paths":  reference_paths,
+            "video_path":       video_path,
+            "audio_path":       audio_path,
         },
         daemon=True
     )
