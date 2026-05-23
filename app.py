@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify
-import hashlib, base64, time, re, json, random, string, os, uuid, threading, tempfile
+import hashlib, base64, time, re, json, random, string, os, uuid, threading, tempfile, html as _html
 import requests
+from urllib.parse import unquote as _unquote
 
 app = Flask(__name__)
 
@@ -134,55 +135,105 @@ def get_model_info(video_type, model_id):
     return None
 
 
-# ─── TempMailLolClient ───────────────────────────────────────────────────────
+# ─── ProTempMailClient ───────────────────────────────────────────────────────
 
-class TempMailLolClient:
-    BASE = "https://api.tempmail.lol/v2"
+class ProTempMailClient:
+    PTM_BASE = "https://protempmail.com"
+    PTM_UA   = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/148.0.0.0 Safari/537.36")
 
     def __init__(self):
-        self.email = None
-        self.token = None
-        self._seen_ids = set()
+        self.email      = None
+        self._token     = None
+        self._session   = requests.Session()
+        self._seen_ids  = set()
+        self._session.headers.update({"user-agent": self.PTM_UA})
+
+    def _msg_headers(self):
+        xsrf = _unquote(self._session.cookies.get("XSRF-TOKEN", ""))
+        return {
+            "accept": "application/json, text/plain, */*",
+            "accept-language": "tr-TR,tr;q=0.9",
+            "content-type": "application/json",
+            "origin": self.PTM_BASE,
+            "referer": f"{self.PTM_BASE}/tr",
+            "user-agent": self.PTM_UA,
+            "x-xsrf-token": xsrf,
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+        }
 
     def get_email(self):
-        resp = requests.post(
-            f"{self.BASE}/inbox/create",
-            headers={"Content-Type": "application/json"},
-            json={}
+        resp = self._session.get(
+            f"{self.PTM_BASE}/tr",
+            headers={
+                "accept": ("text/html,application/xhtml+xml,application/xml;"
+                           "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,"
+                           "application/signed-exchange;v=b3;q=0.7"),
+                "accept-language": "tr-TR,tr;q=0.9",
+                "user-agent": self.PTM_UA,
+                "sec-fetch-dest": "document",
+                "sec-fetch-mode": "navigate",
+                "sec-fetch-site": "none",
+                "upgrade-insecure-requests": "1",
+            },
+            timeout=30,
         )
         resp.raise_for_status()
-        data = resp.json()
-        self.email = data["address"]
-        self.token = data["token"]
+
+        match = re.search(r'<meta[^>]+name=["\']csrf-token["\'][^>]+content=["\']([^"\']+)["\']', resp.text)
+        if not match:
+            match = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']csrf-token["\']', resp.text)
+        if not match:
+            match = re.search(r'csrf[_-]token["\s:\']+([A-Za-z0-9+/]{20,})', resp.text)
+        if not match:
+            raise Exception("ProTempMail: csrf-token alınamadı!")
+        self._token = match.group(1)
+
+        resp2 = self._session.post(
+            f"{self.PTM_BASE}/get_messages",
+            headers=self._msg_headers(),
+            json={"_token": self._token},
+            timeout=30,
+        )
+        resp2.raise_for_status()
+        data = resp2.json()
+
+        self.email = data.get("mailbox")
+        if not self.email:
+            raise Exception("ProTempMail: mailbox alınamadı!")
+
+        for msg in data.get("messages", []):
+            self._seen_ids.add(msg.get("id"))
+
         return self.email
 
     def wait_for_code(self, timeout=60):
         start = time.time()
         while time.time() - start < timeout:
-            resp = requests.get(
-                f"{self.BASE}/inbox",
-                params={"token": self.token}
+            resp = self._session.post(
+                f"{self.PTM_BASE}/get_messages",
+                headers=self._msg_headers(),
+                json={"_token": self._token},
+                timeout=30,
             )
-            resp.raise_for_status()
-            data = resp.json()
+            if not resp.ok:
+                time.sleep(2)
+                continue
 
-            if data.get("expired"):
-                raise TimeoutError("Posta kutusu süresi doldu!")
+            for msg in resp.json().get("messages", []):
+                msg_id = msg.get("id")
+                if msg_id in self._seen_ids:
+                    continue
+                self._seen_ids.add(msg_id)
 
-            for msg in data.get("emails", []):
-                msg_id = msg.get("date")  # date as unique key
-                if msg_id not in self._seen_ids:
-                    self._seen_ids.add(msg_id)
-                    body = msg.get("body", "") or ""
-                    # Search in plain text body
-                    match = re.search(r'\b(\d{4,8})\b', body)
-                    if match:
-                        return match.group(1)
-                    # Also search in HTML if available
-                    html = msg.get("html", "") or ""
-                    match = re.search(r'\b(\d{4,8})\b', re.sub(r'<[^>]+>', ' ', html))
-                    if match:
-                        return match.group(1)
+                content = _html.unescape(re.sub(r'<[^>]+>', ' ', msg.get("content", "") or ""))
+                match = re.search(r'\b(\d{4,8})\b', content)
+                if match:
+                    return match.group(1)
+
             time.sleep(2)
         raise TimeoutError("Kod süresi doldu!")
 
@@ -336,7 +387,7 @@ class WayinClient:
 
 def register_one_account(password, invitation_code=None):
     """Tek hesap açar. WayinClient'i döner."""
-    mail = TempMailLolClient()
+    mail = ProTempMailClient()
     email = mail.get_email()
     wayin = WayinClient()
     wayin.send_verify_code(email, reason="SIGNUP")
@@ -381,7 +432,7 @@ def run_video_job(job_id, instruction, model, model_config_base, auto_prompt, pa
             wayin = main_wayin
         else:
             update("mail", "📧 Geçici email alınıyor...")
-            fake_mail = TempMailLolClient()
+            fake_mail = ProTempMailClient()
             email = fake_mail.get_email()
             update("mail", f"📧 Email: {email}", {"email": email})
 
