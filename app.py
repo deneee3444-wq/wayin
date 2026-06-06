@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify
-import hashlib, base64, time, re, json, random, string, os, uuid, threading, tempfile, html as _html
+import hashlib, base64, time, re, json, random, string, secrets, os, uuid, threading, tempfile, html as _html
 import requests
 from urllib.parse import unquote as _unquote
 
@@ -135,105 +135,54 @@ def get_model_info(video_type, model_id):
     return None
 
 
-# ─── ProTempMailClient ───────────────────────────────────────────────────────
+# ─── Od2In Temp Mail ────────────────────────────────────────────
+
+def _od2_random_box(length=10):
+    return "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(length))
+
+
+def _od2_get_json(url, params):
+    return requests.get(
+        url,
+        params=params,
+        headers={
+            "user-agent": "Mozilla/5.0",
+            "accept": "*/*",
+            "referer": f"https://od2.in/temp-mail?id={params.get('id', '')}",
+        },
+        timeout=30,
+    ).json()
+
 
 class ProTempMailClient:
-    PTM_BASE = "https://protempmail.com"
-    PTM_UA   = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/148.0.0.0 Safari/537.36")
+    """od2.in/temp-mail tabanlı geçici e-posta istemcisi."""
 
     def __init__(self):
-        self.email      = None
-        self._token     = None
-        self._session   = requests.Session()
-        self._seen_ids  = set()
-        self._session.headers.update({"user-agent": self.PTM_UA})
-
-    def _msg_headers(self):
-        xsrf = _unquote(self._session.cookies.get("XSRF-TOKEN", ""))
-        return {
-            "accept": "application/json, text/plain, */*",
-            "accept-language": "tr-TR,tr;q=0.9",
-            "content-type": "application/json",
-            "origin": self.PTM_BASE,
-            "referer": f"{self.PTM_BASE}/tr",
-            "user-agent": self.PTM_UA,
-            "x-xsrf-token": xsrf,
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
-        }
+        self._box      = _od2_random_box()
+        self.email     = f"{self._box}@tm.od2.in"
+        self._seen_ids = set()
 
     def get_email(self):
-        resp = self._session.get(
-            f"{self.PTM_BASE}/tr",
-            headers={
-                "accept": ("text/html,application/xhtml+xml,application/xml;"
-                           "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,"
-                           "application/signed-exchange;v=b3;q=0.7"),
-                "accept-language": "tr-TR,tr;q=0.9",
-                "user-agent": self.PTM_UA,
-                "sec-fetch-dest": "document",
-                "sec-fetch-mode": "navigate",
-                "sec-fetch-site": "none",
-                "upgrade-insecure-requests": "1",
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
-
-        match = re.search(r'<meta[^>]+name=["\']csrf-token["\'][^>]+content=["\']([^"\']+)["\']', resp.text)
-        if not match:
-            match = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']csrf-token["\']', resp.text)
-        if not match:
-            match = re.search(r'csrf[_-]token["\s:\']+([A-Za-z0-9+/]{20,})', resp.text)
-        if not match:
-            raise Exception("ProTempMail: csrf-token alınamadı!")
-        self._token = match.group(1)
-
-        resp2 = self._session.post(
-            f"{self.PTM_BASE}/get_messages",
-            headers=self._msg_headers(),
-            json={"_token": self._token},
-            timeout=30,
-        )
-        resp2.raise_for_status()
-        data = resp2.json()
-
-        self.email = data.get("mailbox")
-        if not self.email:
-            raise Exception("ProTempMail: mailbox alınamadı!")
-
-        for msg in data.get("messages", []):
-            self._seen_ids.add(msg.get("id"))
-
         return self.email
 
     def wait_for_code(self, timeout=60):
         start = time.time()
         while time.time() - start < timeout:
-            resp = self._session.post(
-                f"{self.PTM_BASE}/get_messages",
-                headers=self._msg_headers(),
-                json={"_token": self._token},
-                timeout=30,
-            )
-            if not resp.ok:
-                time.sleep(2)
-                continue
-
-            for msg in resp.json().get("messages", []):
-                msg_id = msg.get("id")
-                if msg_id in self._seen_ids:
-                    continue
-                self._seen_ids.add(msg_id)
-
-                content = _html.unescape(re.sub(r'<[^>]+>', ' ', msg.get("content", "") or ""))
-                match = re.search(r'\b(\d{4,8})\b', content)
-                if match:
-                    return match.group(1)
-
+            try:
+                inbox = _od2_get_json("https://od2.in/api/get-email", {"id": self._box})
+                if inbox:
+                    for item in inbox:
+                        msg_id = item.get("_id")
+                        if msg_id in self._seen_ids:
+                            continue
+                        self._seen_ids.add(msg_id)
+                        msg  = _od2_get_json("https://od2.in/api/get-email", {"emailId": msg_id})
+                        text = (msg.get("text") or "") + "\n" + (msg.get("html") or "")
+                        otp  = re.search(r"\b(\d{6})\b", text)
+                        if otp:
+                            return otp.group(1)
+            except Exception:
+                pass
             time.sleep(2)
         raise TimeoutError("Kod süresi doldu!")
 
